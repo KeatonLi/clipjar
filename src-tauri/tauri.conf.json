@@ -18,13 +18,9 @@
         "minWidth": 900,
         "minHeight": 600,
         "center": true,
-        "decorations": false,
-        "transparent": true,
-        "shadow": true,
-        "windowEffects": {
-          "effects": ["mica"],
-          "state": "followSystemAppearance"
-        }
+        "decorations": true,
+        "transparent": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -45,10 +41,6 @@
   "plugins": {
     "sql": {
       "preload": ["sqlite:clipjar.db"]
-    },
-    "clipboard-manager": {
-      "read": true,
-      "write": true
     }
   }
 }

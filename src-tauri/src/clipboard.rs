@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use tauri_plugin_clipboard_manager::ClipboardExt;

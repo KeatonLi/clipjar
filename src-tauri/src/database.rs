@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
+use tauri::Manager; 
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
 use tauri::AppHandle;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)] 
 pub struct ClipboardItem {
     pub id: i64,
     pub content: String,
