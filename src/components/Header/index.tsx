@@ -1,4 +1,4 @@
-import { Search, Settings, X, Minus, Square } from 'lucide-react';
+import { Search, X, Minus, Square } from 'lucide-react';
 import { useClipboardStore } from '../../stores/clipboardStore';
 
 export function Header() {
@@ -6,7 +6,6 @@ export function Header() {
 
   return (
     <header className="h-16 glass border-b border-neutral-200/60 flex items-center px-4 gap-4 shrink-0">
-      {/* Logo */}
       <div className="flex items-center gap-2.5 shrink-0">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-glow">
           <svg
@@ -26,7 +25,6 @@ export function Header() {
         <span className="font-semibold text-lg text-neutral-800">ClipJar</span>
       </div>
 
-      {/* 搜索框 */}
       <div className="flex-1 max-w-2xl">
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
@@ -48,15 +46,9 @@ export function Header() {
         </div>
       </div>
 
-      {/* 右侧操作区 */}
       <div className="flex items-center gap-1 shrink-0">
-        <button className="btn-ghost p-2" title="设置">
-          <Settings className="w-5 h-5" />
-        </button>
-
         <div className="w-px h-5 bg-neutral-200 mx-1" />
 
-        {/* 窗口控制按钮 */}
         <button
           className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
           title="最小化"

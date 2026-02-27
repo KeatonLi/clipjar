@@ -1,108 +1,115 @@
-import { useCallback, useRef } from 'react';
+import { useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { useClipboardStore } from '../stores/clipboardStore';
-import { ContentType, type ClipboardItem } from '../types';
+import { type ClipboardItem, ContentType } from '../types';
 
-interface ClipboardChangeEvent {
+const isTauri = !!window.__TAURI__;
+
+const detectContentType = (content: string): ContentType => {
+  if (/^https?:\/\/\S+$/i.test(content)) {
+    return ContentType.LINK;
+  }
+  if (/[{};]|function|const|let|var|import|export/.test(content) && content.includes('\n')) {
+    return ContentType.CODE;
+  }
+  return ContentType.TEXT;
+};
+
+interface ClipboardEvent {
   content: string;
   timestamp: number;
 }
 
 export function useClipboard() {
-  const addItem = useClipboardStore((state) => state.addItem);
-  const lastContent = useRef<string>('');
-
-  const detectContentType = (content: string): ContentType => {
-    // 检测链接
-    if (/^https?:\/\/\S+$/i.test(content)) {
-      return ContentType.LINK;
-    }
-    // 检测代码（包含特殊字符或缩进）
-    if (/[{};]|function|const|let|var|import|export/.test(content) && content.includes('\n')) {
-      return ContentType.CODE;
-    }
-    return ContentType.TEXT;
-  };
-
-  const createClipboardItem = (content: string): ClipboardItem => {
-    const contentType = detectContentType(content);
-
-    return {
-      id: Date.now(),
-      content,
-      contentType,
-      sourceApp: 'System',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      isFavorite: false,
-      useCount: 0,
-      tags: [],
-    };
-  };
+  const { addItem: storeAddItem } = useClipboardStore();
+  const lastContentRef = useRef('');
 
   const initClipboard = useCallback(() => {
-    // 监听 Tauri 后端发送的剪贴板变化事件
-    const setupListener = async () => {
-      const unlisten = await listen<ClipboardChangeEvent>('clipboard-change', (event) => {
-        const { content } = event.payload;
-
-        // 避免重复添加
-        if (content && content !== lastContent.current) {
-          lastContent.current = content;
-          const newItem = createClipboardItem(content);
-          addItem(newItem);
-
-          // 可选：显示系统通知
-          console.log('New clipboard item:', content.substring(0, 50));
+    if (!isTauri) {
+      const interval = setInterval(async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          const lastContent = lastContentRef.current;
+          
+          if (text && text !== lastContent) {
+            lastContentRef.current = text;
+            
+            const newItem: ClipboardItem = {
+              id: Date.now(),
+              content: text,
+              contentType: detectContentType(text),
+              sourceApp: 'System',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              isFavorite: false,
+              useCount: 0,
+              tags: [],
+            };
+            
+            storeAddItem(newItem);
+            console.log('New clipboard item:', text.substring(0, 50));
+          }
+        } catch {
+          // 忽略剪贴板读取错误
         }
-      });
+      }, 1000);
 
-      return unlisten;
-    };
+      return () => clearInterval(interval);
+    }
 
-    const unlistenPromise = setupListener();
+    let unlisten: (() => void) | null = null;
 
-    return () => {
-      unlistenPromise.then((fn) => fn());
-    };
-  }, [addItem]);
+    listen<ClipboardEvent>('clipboard-change', (event) => {
+      const { content } = event.payload;
+      const lastContent = lastContentRef.current;
+      
+      if (content && content !== lastContent) {
+        lastContentRef.current = content;
+        
+        const newItem: ClipboardItem = {
+          id: Date.now(),
+          content,
+          contentType: detectContentType(content),
+          sourceApp: 'System',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          isFavorite: false,
+          useCount: 0,
+          tags: [],
+        };
+        
+        storeAddItem(newItem);
+        console.log('New clipboard item from backend:', content.substring(0, 50));
+      }
+    }).then((fn: () => void) => { unlisten = fn; });
+
+    return () => { if (unlisten) unlisten(); };
+  }, [storeAddItem]);
 
   const copyToClipboard = useCallback(async (content: string) => {
     try {
-      // 优先使用 Tauri API
-      if (window.__TAURI__) {
+      if (isTauri) {
         await invoke('write_clipboard_text', { text: content });
-        return true;
+      } else {
+        await navigator.clipboard.writeText(content);
       }
-      // 降级使用 Web API
-      await navigator.clipboard.writeText(content);
       return true;
-    } catch (err) {
-      console.error('Failed to copy:', err);
+    } catch {
+      console.error('Failed to copy');
       return false;
     }
   }, []);
 
-  const copyToClipboardNative = useCallback(async (content: string) => {
-    try {
-      await invoke('write_clipboard_text', { text: content });
-      return true;
-    } catch (err) {
-      console.error('Failed to copy via Tauri:', err);
-      return false;
-    }
-  }, []);
+  const copyToClipboardNative = copyToClipboard;
 
   return {
     initClipboard,
-    createClipboardItem,
     copyToClipboard,
     copyToClipboardNative,
   };
 }
 
-// 扩展 Window 接口
 declare global {
   interface Window {
     __TAURI__?: unknown;

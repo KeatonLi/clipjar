@@ -5,8 +5,8 @@ import {
   FileText,
   Code,
   Link,
-  Settings,
   Tags,
+  Settings,
 } from 'lucide-react';
 import { useClipboardStore } from '../../stores/clipboardStore';
 import { ContentType, type FilterType } from '../../types';
@@ -37,7 +37,7 @@ function NavItem({ icon, label, count, isActive, onClick }: NavItemProps) {
 }
 
 export function Sidebar() {
-  const { filterType, setFilterType, items } = useClipboardStore();
+  const { filterType, setFilterType, items, setShowSettings } = useClipboardStore();
 
   const getCount = (type: FilterType) => {
     if (type === 'all') return items.length;
@@ -59,7 +59,6 @@ export function Sidebar() {
 
   return (
     <aside className="w-56 bg-white border-r border-neutral-200/60 flex flex-col">
-      {/* 主导航 */}
       <div className="p-3 space-y-1">
         {navItems.map((item) => (
           <NavItem
@@ -75,7 +74,6 @@ export function Sidebar() {
 
       <div className="mx-3 h-px bg-neutral-100" />
 
-      {/* 类型筛选 */}
       <div className="p-3">
         <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2 px-4">
           类型
@@ -96,7 +94,6 @@ export function Sidebar() {
 
       <div className="flex-1" />
 
-      {/* 标签区域 */}
       <div className="p-3 border-t border-neutral-100">
         <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2 px-4 flex items-center gap-1">
           <Tags className="w-3 h-3" />
@@ -107,9 +104,8 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 底部设置 */}
       <div className="p-3 border-t border-neutral-100">
-        <button className="nav-item w-full">
+        <button className="nav-item w-full" onClick={() => setShowSettings(true)}>
           <Settings className="w-4 h-4" />
           <span>设置</span>
         </button>

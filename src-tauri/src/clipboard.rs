@@ -23,7 +23,6 @@ impl ClipboardManager {
         let last_content = self.last_content.clone();
         let app_handle = self.app_handle.clone();
 
-        // 初始化时读取一次剪贴板
         if let Ok(content) = self.read_clipboard_text().await {
             let mut last = last_content.lock().await;
             *last = content;
@@ -41,7 +40,6 @@ impl ClipboardManager {
                             *last = content.clone();
                             drop(last);
 
-                            // 发送事件到前端
                             let _ = app_handle.emit("clipboard-change", serde_json::json!({
                                 "content": content,
                                 "timestamp": chrono::Utc::now().timestamp_millis()
@@ -50,7 +48,6 @@ impl ClipboardManager {
                     }
                 }
                 Err(e) => {
-                    // 静默处理错误，避免频繁报错
                     if !e.contains("empty") {
                         eprintln!("Clipboard read error: {}", e);
                     }
@@ -62,7 +59,6 @@ impl ClipboardManager {
     async fn read_clipboard_text(&self) -> Result<String, String> {
         let app_handle = self.app_handle.clone();
 
-        // 使用 spawn_blocking 来执行同步的剪贴板操作
         let result = tokio::task::spawn_blocking(move || {
             app_handle.clipboard().read_text()
         })
@@ -73,8 +69,6 @@ impl ClipboardManager {
     }
 }
 
-// 剪贴板写入命令
-#[tauri::command]
 pub async fn write_clipboard_text(
     app_handle: AppHandle,
     text: String,

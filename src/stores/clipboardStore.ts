@@ -1,30 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type {
-  ClipboardItem,
-  FilterType,
-  AppSettings,
-  GroupedItems,
-} from '../types';
+import type { ClipboardItem, FilterType, AppSettings, GroupedItems } from '../types';
 
 interface ClipboardState {
-  // 数据
   items: ClipboardItem[];
   selectedId: number | null;
   searchQuery: string;
   filterType: FilterType;
   selectedTag: string | null;
   isLoading: boolean;
-
-  // 设置
   settings: AppSettings;
+  showSettings: boolean;
 
-  // 计算属性
-  filteredItems: () => ClipboardItem[];
-  groupedItems: () => GroupedItems;
-  selectedItem: () => ClipboardItem | null;
-
-  // 操作方法
   setItems: (items: ClipboardItem[]) => void;
   addItem: (item: ClipboardItem) => void;
   updateItem: (id: number, updates: Partial<ClipboardItem>) => void;
@@ -36,6 +23,7 @@ interface ClipboardState {
   setSelectedTag: (tag: string | null) => void;
   setSettings: (settings: Partial<AppSettings>) => void;
   incrementUseCount: (id: number) => void;
+  setShowSettings: (show: boolean) => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -47,7 +35,6 @@ const defaultSettings: AppSettings = {
   showPreview: true,
 };
 
-// 分组辅助函数
 function groupItems(items: ClipboardItem[]): GroupedItems {
   const now = Date.now();
   const today = new Date(now).setHours(0, 0, 0, 0);
@@ -62,9 +49,42 @@ function groupItems(items: ClipboardItem[]): GroupedItems {
   };
 }
 
+export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
+  let items = [...state.items];
+
+  if (state.searchQuery.trim()) {
+    const query = state.searchQuery.toLowerCase();
+    items = items.filter(
+      item =>
+        item.content.toLowerCase().includes(query) ||
+        item.tags.some(tag => tag.toLowerCase().includes(query))
+    );
+  }
+
+  if (state.filterType === 'favorite') {
+    items = items.filter(item => item.isFavorite);
+  } else if (state.filterType !== 'all') {
+    items = items.filter(item => item.contentType === state.filterType);
+  }
+
+  if (state.selectedTag) {
+    items = items.filter(item => item.tags.includes(state.selectedTag!));
+  }
+
+  return items.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function getGroupedItems(state: ClipboardState): GroupedItems {
+  return groupItems(getFilteredItems(state));
+}
+
+export function getSelectedItem(state: ClipboardState): ClipboardItem | null {
+  return state.items.find(item => item.id === state.selectedId) || null;
+}
+
 export const useClipboardStore = create<ClipboardState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       items: [],
       selectedId: null,
       searchQuery: '',
@@ -72,50 +92,12 @@ export const useClipboardStore = create<ClipboardState>()(
       selectedTag: null,
       isLoading: false,
       settings: defaultSettings,
-
-      filteredItems: () => {
-        const state = get();
-        let items = [...state.items];
-
-        // 搜索过滤
-        if (state.searchQuery.trim()) {
-          const query = state.searchQuery.toLowerCase();
-          items = items.filter(
-            item =>
-              item.content.toLowerCase().includes(query) ||
-              item.tags.some(tag => tag.toLowerCase().includes(query))
-          );
-        }
-
-        // 类型过滤
-        if (state.filterType === 'favorite') {
-          items = items.filter(item => item.isFavorite);
-        } else if (state.filterType !== 'all') {
-          items = items.filter(item => item.contentType === state.filterType);
-        }
-
-        // 标签过滤
-        if (state.selectedTag) {
-          items = items.filter(item => item.tags.includes(state.selectedTag!));
-        }
-
-        return items.sort((a, b) => b.createdAt - a.createdAt);
-      },
-
-      groupedItems: () => {
-        return groupItems(get().filteredItems());
-      },
-
-      selectedItem: () => {
-        const state = get();
-        return state.items.find(item => item.id === state.selectedId) || null;
-      },
+      showSettings: false,
 
       setItems: items => set({ items }),
 
       addItem: item =>
         set(state => {
-          // 检查是否重复（最近1秒内相同内容）
           const isDuplicate = state.items.some(
             existing =>
               existing.content === item.content &&
@@ -124,7 +106,6 @@ export const useClipboardStore = create<ClipboardState>()(
           if (isDuplicate) return state;
 
           const newItems = [item, ...state.items];
-          // 限制最大数量
           if (newItems.length > state.settings.maxHistoryItems) {
             return { items: newItems.slice(0, state.settings.maxHistoryItems) };
           }
@@ -170,10 +151,15 @@ export const useClipboardStore = create<ClipboardState>()(
             item.id === id ? { ...item, useCount: item.useCount + 1 } : item
           ),
         })),
+
+      setShowSettings: show => set({ showSettings: show }),
     }),
     {
-      name: 'clipjar-settings',
-      partialize: state => ({ settings: state.settings }),
+      name: 'clipjar-storage',
+      partialize: state => ({ 
+        settings: state.settings,
+        items: state.items,
+      }),
     }
   )
 );

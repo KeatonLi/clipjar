@@ -1,10 +1,13 @@
 import { useEffect, useCallback } from 'react';
-import { register, unregister } from '@tauri-apps/plugin-global-shortcut';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+
+const isTauri = !!window.__TAURI__;
 
 export function useGlobalShortcut() {
   const toggleWindow = useCallback(async () => {
+    if (!isTauri) return;
+    
     try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const window = getCurrentWindow();
       const isVisible = await window.isVisible();
 
@@ -20,13 +23,26 @@ export function useGlobalShortcut() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri) return;
+
+    let unregisterFn: (() => void) | null = null;
+
     const setupShortcut = async () => {
       try {
-        // 注册全局快捷键 Cmd/Ctrl + Shift + V
+        const { register, unregister } = await import('@tauri-apps/plugin-global-shortcut');
+        
         await register('CommandOrControl+Shift+V', () => {
           toggleWindow();
         });
         console.log('Global shortcut registered: Cmd/Ctrl+Shift+V');
+
+        unregisterFn = async () => {
+          try {
+            await unregister('CommandOrControl+Shift+V');
+          } catch (err) {
+            console.error('Failed to unregister shortcut:', err);
+          }
+        };
       } catch (err) {
         console.error('Failed to register global shortcut:', err);
       }
@@ -35,12 +51,17 @@ export function useGlobalShortcut() {
     setupShortcut();
 
     return () => {
-      // 清理快捷键
-      unregister('CommandOrControl+Shift+V').catch((err) => {
-        console.error('Failed to unregister shortcut:', err);
-      });
+      if (unregisterFn) {
+        unregisterFn();
+      }
     };
   }, [toggleWindow]);
 
   return { toggleWindow };
+}
+
+declare global {
+  interface Window {
+    __TAURI__?: unknown;
+  }
 }

@@ -1,4 +1,4 @@
-import { useClipboardStore } from '../../stores/clipboardStore';
+import { useClipboardStore, getFilteredItems, getGroupedItems } from '../../stores/clipboardStore';
 import { ClipboardItem } from '../ClipboardItem';
 import { ClipboardX, Sparkles } from 'lucide-react';
 import type { ClipboardItem as ClipboardItemType } from '../../types';
@@ -14,8 +14,9 @@ function formatGroupLabel(key: string): string {
 }
 
 export function ClipboardList() {
-  const groupedItems = useClipboardStore((state) => state.groupedItems());
-  const filteredItems = useClipboardStore((state) => state.filteredItems());
+  const state = useClipboardStore();
+  const filteredItems = getFilteredItems(state);
+  const groupedItems = getGroupedItems(state);
 
   const hasItems = filteredItems.length > 0;
 
@@ -55,7 +56,6 @@ export function ClipboardList() {
               )
           )}
 
-          {/* 底部提示 */}
           <div className="flex items-center justify-center gap-2 py-6 text-neutral-400 text-sm">
             <Sparkles className="w-4 h-4" />
             <span>已加载全部内容</span>

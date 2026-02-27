@@ -20,7 +20,8 @@
         "center": true,
         "decorations": true,
         "transparent": false,
-        "shadow": true
+        "shadow": true,
+        "devtools": true
       }
     ],
     "security": {
@@ -39,8 +40,5 @@
     ]
   },
   "plugins": {
-    "sql": {
-      "preload": ["sqlite:clipjar.db"]
-    }
   }
 }
