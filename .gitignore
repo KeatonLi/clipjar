@@ -15,6 +15,9 @@ build/
 /src-tauri/*.log
 /src-tauri/WixTools/
 
+# Build outputs
+target/
+
 # Logs
 logs/
 *.log
