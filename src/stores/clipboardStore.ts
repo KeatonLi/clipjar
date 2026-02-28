@@ -29,7 +29,7 @@ interface ClipboardState {
 }
 
 const defaultSettings: AppSettings = {
-  maxHistoryItems: 500,
+  maxHistoryItems: 100,
   autoCleanup: true,
   cleanupDays: 30,
   globalShortcut: 'CommandOrControl+Shift+V',
@@ -119,10 +119,21 @@ export const useClipboardStore = create<ClipboardState>()(
               : item.content,
           };
 
-          const newItems = [truncatedItem, ...state.items];
-          if (newItems.length > state.settings.maxHistoryItems) {
-            return { items: newItems.slice(0, state.settings.maxHistoryItems) };
-          }
+          // 分离收藏和非收藏项目
+          const favoriteItems = state.items.filter(i => i.isFavorite);
+          const normalItems = state.items.filter(i => !i.isFavorite);
+
+          // 将新项目添加到非收藏列表前面
+          const newNormalItems = [truncatedItem, ...normalItems];
+
+          // 限制非收藏项目数量
+          const limitedNormalItems = newNormalItems.slice(0, state.settings.maxHistoryItems);
+
+          // 合并但按时间顺序混合（不置顶收藏）
+          const mergedItems = [...favoriteItems, ...limitedNormalItems];
+          // 按时间排序，收藏和普通项目混合
+          const newItems = mergedItems.sort((a, b) => b.createdAt - a.createdAt);
+
           return { items: newItems };
         }),
 
