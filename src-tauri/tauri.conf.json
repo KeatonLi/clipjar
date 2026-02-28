@@ -15,10 +15,10 @@
       {
         "title": "ClipJar",
         "label": "main",
-        "width": 380,
-        "height": 520,
+        "width": 340,
+        "height": 560,
         "minWidth": 320,
-        "minHeight": 400,
+        "minHeight": 480,
         "center": true,
         "decorations": true,
         "transparent": false,
