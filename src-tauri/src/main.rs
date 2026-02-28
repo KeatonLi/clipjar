@@ -1,5 +1,7 @@
 mod clipboard;
 
+use tauri::Manager;
+
 #[tauri::command]
 fn get_clipboard_history() -> Vec<serde_json::Value> {
     vec![]

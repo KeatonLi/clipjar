@@ -24,7 +24,6 @@
         "transparent": false,
         "shadow": true,
         "devtools": true,
-        "visibleOnAllSpaces": true,
         "skipTaskbar": false
       }
     ],
