@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   Star,
   Copy,
@@ -9,6 +9,10 @@ import {
   Code,
   Link,
   Check,
+  StickyNote,
+  Edit3,
+  Save,
+  X,
 } from 'lucide-react';
 import { useClipboardStore } from '../../stores/clipboardStore';
 import { ContentType, type ClipboardItem as ClipboardItemType } from '../../types';
@@ -67,11 +71,19 @@ function formatTime(timestamp: number): string {
   });
 }
 
-export function ClipboardItem({ item }: ClipboardItemProps) {
+// 截断内容显示，优化内存
+function truncateContent(content: string, maxLength: number = 500): string {
+  if (content.length <= maxLength) return content;
+  return content.substring(0, maxLength) + '...';
+}
+
+export const ClipboardItem = memo(function ClipboardItem({ item }: ClipboardItemProps) {
   const [isCopied, setIsCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteContent, setNoteContent] = useState(item.note || '');
 
-  const { selectedId, setSelectedId, toggleFavorite, deleteItem, incrementUseCount } =
+  const { selectedId, setSelectedId, toggleFavorite, deleteItem, incrementUseCount, updateNote } =
     useClipboardStore();
 
   const isSelected = selectedId === item.id;
@@ -105,6 +117,18 @@ export function ClipboardItem({ item }: ClipboardItemProps) {
     }
   };
 
+  const handleSaveNote = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateNote(item.id, noteContent.trim());
+    setIsEditingNote(false);
+  };
+
+  const handleCancelNote = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNoteContent(item.note || '');
+    setIsEditingNote(false);
+  };
+
   return (
     <div
       className={`clipboard-card ${isSelected ? 'selected' : ''}`}
@@ -125,7 +149,7 @@ export function ClipboardItem({ item }: ClipboardItemProps) {
         {/* 内容区域 */}
         <div className="flex-1 min-w-0">
           {/* 顶部信息 */}
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className="text-xs text-neutral-400">{formatTime(item.createdAt)}</span>
             {item.sourceApp && (
               <>
@@ -138,13 +162,19 @@ export function ClipboardItem({ item }: ClipboardItemProps) {
                 使用 {item.useCount} 次
               </span>
             )}
+            {item.isFavorite && (
+              <span className="text-xs text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <Star className="w-3 h-3 fill-current" />
+                已收藏
+              </span>
+            )}
           </div>
 
-          {/* 内容预览 */}
+          {/* 内容预览 - 截断显示 */}
           <div className="text-sm text-neutral-700 line-clamp-3 leading-relaxed">
             {item.contentType === ContentType.CODE ? (
-              <pre className="font-mono text-xs bg-neutral-50 p-2 rounded-lg overflow-x-auto">
-                {item.content}
+              <pre className="font-mono text-xs bg-neutral-50 p-2 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+                {truncateContent(item.content)}
               </pre>
             ) : item.contentType === ContentType.LINK ? (
               <a
@@ -154,16 +184,16 @@ export function ClipboardItem({ item }: ClipboardItemProps) {
                 className="text-primary-600 hover:underline break-all"
                 onClick={(e) => e.stopPropagation()}
               >
-                {item.content}
+                {truncateContent(item.content)}
               </a>
             ) : (
-              item.content
+              truncateContent(item.content)
             )}
           </div>
 
           {/* 标签 */}
           {item.tags.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-2">
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               {item.tags.map((tag) => (
                 <span key={tag} className="tag-blue">
                   {tag}
@@ -171,6 +201,63 @@ export function ClipboardItem({ item }: ClipboardItemProps) {
               ))}
             </div>
           )}
+
+          {/* 备注区域 */}
+          <div className="mt-3 pt-3 border-t border-neutral-100">
+            {isEditingNote ? (
+              <div className="flex items-start gap-2" onClick={(e) => e.stopPropagation()}>
+                <textarea
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  placeholder="添加备注..."
+                  className="flex-1 text-sm bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-100"
+                  rows={2}
+                  autoFocus
+                />
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={handleSaveNote}
+                    className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors"
+                    title="保存"
+                  >
+                    <Save className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleCancelNote}
+                    className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors"
+                    title="取消"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="flex items-start gap-2 cursor-pointer group"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditingNote(true);
+                }}
+              >
+                {item.note ? (
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5 text-xs text-neutral-500 mb-1">
+                      <StickyNote className="w-3 h-3" />
+                      <span>备注</span>
+                    </div>
+                    <p className="text-sm text-neutral-600 bg-neutral-50 rounded-lg px-3 py-2">
+                      {item.note}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-primary-500 transition-colors py-1">
+                    <Edit3 className="w-3 h-3" />
+                    <span>添加备注</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 操作按钮 */}
@@ -228,4 +315,4 @@ export function ClipboardItem({ item }: ClipboardItemProps) {
       </div>
     </div>
   );
-}
+});

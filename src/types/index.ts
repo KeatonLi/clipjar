@@ -19,6 +19,7 @@ export interface ClipboardItem {
   isFavorite: boolean;
   useCount: number;
   tags: string[];
+  note?: string; // 备注
 }
 
 // 标签

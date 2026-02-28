@@ -7,6 +7,7 @@ import {
   Link,
   Tags,
   Settings,
+  StickyNote,
 } from 'lucide-react';
 import { useClipboardStore } from '../../stores/clipboardStore';
 import { ContentType, type FilterType } from '../../types';
@@ -17,13 +18,14 @@ interface NavItemProps {
   count?: number;
   isActive: boolean;
   onClick: () => void;
+  highlight?: boolean;
 }
 
-function NavItem({ icon, label, count, isActive, onClick }: NavItemProps) {
+function NavItem({ icon, label, count, isActive, onClick, highlight }: NavItemProps) {
   return (
     <button
       onClick={onClick}
-      className={`nav-item w-full ${isActive ? 'active' : ''}`}
+      className={`nav-item w-full ${isActive ? 'active' : ''} ${highlight ? 'highlight' : ''}`}
     >
       <span className="w-5 h-5 flex items-center justify-center">{icon}</span>
       <span className="flex-1 text-left">{label}</span>
@@ -45,9 +47,12 @@ export function Sidebar() {
     return items.filter((i) => i.contentType === type).length;
   };
 
-  const navItems: { type: FilterType; icon: React.ReactNode; label: string }[] = [
+  // 获取有备注的条目数量
+  const noteCount = items.filter((i) => i.note && i.note.trim().length > 0).length;
+
+  const navItems: { type: FilterType; icon: React.ReactNode; label: string; highlight?: boolean }[] = [
     { type: 'all', icon: <LayoutGrid className="w-4 h-4" />, label: '全部' },
-    { type: 'favorite', icon: <Star className="w-4 h-4" />, label: '收藏' },
+    { type: 'favorite', icon: <Star className="w-4 h-4" />, label: '收藏', highlight: true },
   ];
 
   const typeItems: { type: FilterType; icon: React.ReactNode; label: string }[] = [
@@ -68,6 +73,7 @@ export function Sidebar() {
             count={getCount(item.type)}
             isActive={filterType === item.type}
             onClick={() => setFilterType(item.type)}
+            highlight={item.highlight}
           />
         ))}
       </div>
@@ -94,6 +100,27 @@ export function Sidebar() {
 
       <div className="flex-1" />
 
+      {/* 备注筛选 */}
+      <div className="p-3 border-t border-neutral-100">
+        <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2 px-4 flex items-center gap-1">
+          <StickyNote className="w-3 h-3" />
+          备注
+        </h3>
+        <button
+          className="nav-item w-full"
+          onClick={() => setFilterType('all')}
+        >
+          <StickyNote className="w-4 h-4" />
+          <span className="flex-1 text-left">有备注的内容</span>
+          {noteCount > 0 && (
+            <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded-full">
+              {noteCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* 标签区域 - 预留 */}
       <div className="p-3 border-t border-neutral-100">
         <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2 px-4 flex items-center gap-1">
           <Tags className="w-3 h-3" />

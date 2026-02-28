@@ -15,6 +15,7 @@ interface ClipboardState {
   setItems: (items: ClipboardItem[]) => void;
   addItem: (item: ClipboardItem) => void;
   updateItem: (id: number, updates: Partial<ClipboardItem>) => void;
+  updateNote: (id: number, note: string) => void;
   deleteItem: (id: number) => void;
   toggleFavorite: (id: number) => void;
   setSelectedId: (id: number | null) => void;
@@ -24,6 +25,7 @@ interface ClipboardState {
   setSettings: (settings: Partial<AppSettings>) => void;
   incrementUseCount: (id: number) => void;
   setShowSettings: (show: boolean) => void;
+  clearAll: () => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -34,6 +36,9 @@ const defaultSettings: AppSettings = {
   startAtLogin: false,
   showPreview: true,
 };
+
+// 内容最大长度限制，超过则截断存储（优化内存）
+const MAX_CONTENT_LENGTH = 10000;
 
 function groupItems(items: ClipboardItem[]): GroupedItems {
   const now = Date.now();
@@ -57,7 +62,8 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
     items = items.filter(
       item =>
         item.content.toLowerCase().includes(query) ||
-        item.tags.some(tag => tag.toLowerCase().includes(query))
+        item.tags.some(tag => tag.toLowerCase().includes(query)) ||
+        (item.note && item.note.toLowerCase().includes(query))
     );
   }
 
@@ -105,7 +111,15 @@ export const useClipboardStore = create<ClipboardState>()(
           );
           if (isDuplicate) return state;
 
-          const newItems = [item, ...state.items];
+          // 截断过长的内容以优化内存
+          const truncatedItem = {
+            ...item,
+            content: item.content.length > MAX_CONTENT_LENGTH
+              ? item.content.substring(0, MAX_CONTENT_LENGTH)
+              : item.content,
+          };
+
+          const newItems = [truncatedItem, ...state.items];
           if (newItems.length > state.settings.maxHistoryItems) {
             return { items: newItems.slice(0, state.settings.maxHistoryItems) };
           }
@@ -116,6 +130,13 @@ export const useClipboardStore = create<ClipboardState>()(
         set(state => ({
           items: state.items.map(item =>
             item.id === id ? { ...item, ...updates, updatedAt: Date.now() } : item
+          ),
+        })),
+
+      updateNote: (id, note) =>
+        set(state => ({
+          items: state.items.map(item =>
+            item.id === id ? { ...item, note, updatedAt: Date.now() } : item
           ),
         })),
 
@@ -153,6 +174,8 @@ export const useClipboardStore = create<ClipboardState>()(
         })),
 
       setShowSettings: show => set({ showSettings: show }),
+
+      clearAll: () => set({ items: [] }),
     }),
     {
       name: 'clipjar-storage',
