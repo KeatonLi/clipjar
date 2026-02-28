@@ -1,5 +1,3 @@
-use tauri_plugin_clipboard_manager::ClipboardExt;
-
 mod clipboard;
 
 #[tauri::command]
@@ -50,6 +48,20 @@ fn main() {
             update_use_count,
             write_clipboard_text,
         ])
+        .setup(|app| {
+            // 获取主窗口
+            if let Some(window) = app.get_webview_window("main") {
+                // 阻止窗口关闭，改为隐藏
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                    }
+                });
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

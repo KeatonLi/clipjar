@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
 import { type ClipboardItem, ContentType } from './types';
-import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download } from 'lucide-react';
+import { useGlobalShortcut } from './hooks/useGlobalShortcut';
+import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
 // 检测内容类型
@@ -34,6 +35,9 @@ export default function App() {
   const [noteContent, setNoteContent] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const lastContentRef = useRef('');
+
+  // 全局快捷键
+  useGlobalShortcut();
 
   // 剪贴板监听
   useEffect(() => {
@@ -282,6 +286,20 @@ function SettingsModal({ onClose, onClearAll, itemCount }: { onClose: () => void
               <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform mt-0.5 ${notifications ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </div>
           </button>
+
+          {/* 全局快捷键 */}
+          <div className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-50 rounded-lg">
+                <Keyboard className="w-4 h-4 text-indigo-500" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-medium">唤起快捷键</div>
+                <div className="text-xs text-slate-400">双击 Ctrl 唤起</div>
+              </div>
+            </div>
+            <span className="text-indigo-500 text-xs font-medium">Ctrl+Shift+V</span>
+          </div>
 
           {/* 记录数量 */}
           <div className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">

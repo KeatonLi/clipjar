@@ -10,9 +10,11 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "ClipJar",
+        "label": "main",
         "width": 380,
         "height": 520,
         "minWidth": 320,
@@ -21,7 +23,9 @@
         "decorations": true,
         "transparent": false,
         "shadow": true,
-        "devtools": true
+        "devtools": true,
+        "visibleOnAllSpaces": true,
+        "skipTaskbar": false
       }
     ],
     "security": {
@@ -37,7 +41,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.13"
+    }
   },
   "plugins": {
   }
