@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
 import { type ClipboardItem, ContentType } from './types';
 import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
-import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard, Link, Code } from 'lucide-react';
-import { readText, writeText, readImage } from '@tauri-apps/plugin-clipboard-manager';
+import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard, Link, Code, Pin } from 'lucide-react';
+import { readText, writeText, readImage, writeImage } from '@tauri-apps/plugin-clipboard-manager';
+import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 // 检测内容类型
 const detectContentType = (content: string): ContentType => {
@@ -144,8 +146,22 @@ export default function App() {
   // 复制到剪贴板
   const handleCopy = useCallback(async (item: ClipboardItem) => {
     try {
-      await writeText(item.content);
-      lastContentRef.current = item.content;
+      // 如果是图片类型
+      if (item.contentType === ContentType.IMAGE && item.imagePath) {
+        // 将 base64 转换为 Blob 再写入剪贴板
+        const response = await fetch(item.imagePath);
+        const blob = await response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // 使用 writeImage 写入图片
+        await writeImage(uint8Array);
+        console.log('[ClipJar] 图片已复制');
+      } else {
+        // 文本类型
+        await writeText(item.content);
+        lastContentRef.current = item.content;
+      }
       setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), 1500);
     } catch (err) {
@@ -332,8 +348,53 @@ export default function App() {
 function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcutChange, settings, setSettings }: { onClose: () => void; onClearAll: () => void; itemCount: number; shortcutMode: ShortcutMode; onShortcutChange: (mode: ShortcutMode) => void; settings: { maxHistoryItems: number }; setSettings: (s: { maxHistoryItems: number }) => void }) {
   const [startup, setStartup] = useState(true);
   const [notifications, setNotifications] = useState(false);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ hasUpdate: boolean; version?: string; notes?: string } | null>(null);
+
+  // 初始化状态
+  useEffect(() => {
+    const initSettings = async () => {
+      try {
+        // 检查自启状态
+        const autoStartEnabled = await isEnabled();
+        setStartup(autoStartEnabled);
+
+        // 检查窗口置顶状态
+        const window = getCurrentWindow();
+        const isOnTop = await window.isAlwaysOnTop();
+        setAlwaysOnTop(isOnTop);
+      } catch (err) {
+        console.log('[ClipJar] 初始化设置失败:', err);
+      }
+    };
+    initSettings();
+  }, []);
+
+  // 切换自启
+  const toggleStartup = async () => {
+    try {
+      if (startup) {
+        await disable();
+      } else {
+        await enable();
+      }
+      setStartup(!startup);
+    } catch (err) {
+      console.log('[ClipJar] 切换自启失败:', err);
+    }
+  };
+
+  // 切换置顶
+  const toggleAlwaysOnTop = async () => {
+    try {
+      const window = getCurrentWindow();
+      await window.setAlwaysOnTop(!alwaysOnTop);
+      setAlwaysOnTop(!alwaysOnTop);
+    } catch (err) {
+      console.log('[ClipJar] 切换置顶失败:', err);
+    }
+  };
 
   // 检查更新
   const checkUpdate = useCallback(async () => {
@@ -388,7 +449,7 @@ function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcu
           {/* 开机自启 */}
           <button
             className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50/80 transition-all duration-200 group"
-            onClick={() => setStartup(!startup)}
+            onClick={toggleStartup}
           >
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-sm">
@@ -420,6 +481,25 @@ function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcu
             </div>
             <div className={`w-11 h-6 rounded-full transition-all duration-200 ${notifications ? 'bg-primary-500 shadow-button shadow-primary-500/30' : 'bg-slate-200'}`}>
               <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-all duration-200 mt-0.5 ${notifications ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </div>
+          </button>
+
+          {/* 窗口置顶 */}
+          <button
+            className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50/80 transition-all duration-200 group"
+            onClick={toggleAlwaysOnTop}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-xl shadow-sm">
+                <Pin className="w-4 h-4 text-cyan-600" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-medium text-slate-700">窗口置顶</div>
+                <div className="text-xs text-slate-400">保持窗口在最前面</div>
+              </div>
+            </div>
+            <div className={`w-11 h-6 rounded-full transition-all duration-200 ${alwaysOnTop ? 'bg-primary-500 shadow-button shadow-primary-500/30' : 'bg-slate-200'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-all duration-200 mt-0.5 ${alwaysOnTop ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </div>
           </button>
 

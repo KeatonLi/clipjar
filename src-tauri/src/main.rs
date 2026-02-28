@@ -1,6 +1,7 @@
 mod clipboard;
 
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
 
 #[tauri::command]
 fn get_clipboard_history() -> Vec<serde_json::Value> {
@@ -41,6 +42,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             get_clipboard_history,
