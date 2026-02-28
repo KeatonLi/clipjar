@@ -7,15 +7,24 @@
 ![Tauri](https://img.shields.io/badge/Tauri-v2-FFC131?logo=tauri)
 ![React](https://img.shields.io/badge/React-v19-61DAFB?logo=react)
 
+## 界面预览
+
+![主界面](screenshots/main.png)
+*主界面 - 剪贴板历史列表*
+
+![设置面板](screenshots/settings.png)
+*设置面板 - 快捷键、最大记录数等配置*
+
 ## 功能特性
 
 - 📋 **自动监听** - 后台实时监听剪贴板变化，自动保存历史记录
-- 🔍 **智能搜索** - 支持内容搜索，快速找到需要的剪贴项
-- 🏷️ **类型识别** - 自动识别文本、代码、链接、图片等内容类型
-- ⭐ **收藏置顶** - 重要内容一键收藏，方便快速访问
-- 📊 **使用统计** - 记录使用次数，了解常用内容
-- ⌨️ **全局快捷键** - `Cmd/Ctrl + Shift + V` 快速唤起应用
-- 💾 **本地存储** - SQLite 数据库存储，数据安全可靠
+- 🔍 **智能搜索** - 支持内容和备注搜索，快速找到需要的剪贴项
+- 🏷️ **类型识别** - 自动识别文本、代码、链接等内容类型并显示图标
+- ⭐ **收藏功能** - 重要内容一键收藏，永久保存不计入限制
+- 📝 **备注支持** - 为收藏内容添加备注，方便记忆
+- ⌨️ **全局快捷键** - 自定义快捷键快速唤起应用
+- ⌨️ **键盘导航** - 支持上下键选择、Enter 复制、Esc 取消
+- 💾 **本地存储** - 浏览器 localStorage 存储，数据安全可靠
 - 🎨 **精美界面** - 白色淡蓝色主题，简洁优雅的视觉体验
 
 ## 技术栈
@@ -24,9 +33,9 @@
 |------|------|
 | 前端框架 | React 19 + TypeScript |
 | 桌面框架 | Tauri v2 (Rust) |
-| 状态管理 | Zustand |
+| 状态管理 | Zustand (persist middleware) |
 | 样式方案 | Tailwind CSS |
-| 数据库 | SQLite |
+| 存储方案 | localStorage |
 | 图标库 | Lucide React |
 
 ## 安装运行
@@ -103,10 +112,10 @@ clipjar/
 
 ### 数据存储
 
-- **macOS**: `~/Library/Application Support/com.clipjar.app/`
-- **Windows**: `%APPDATA%/com.clipjar.app/`
+数据使用浏览器 localStorage 本地存储，不会上传到云端。
 
-数据使用 SQLite 本地存储，不会上传到云端。
+- **macOS**: 数据存储在浏览器本地存储中
+- **Windows**: 数据存储在浏览器本地存储中
 
 ## 开发计划
 
