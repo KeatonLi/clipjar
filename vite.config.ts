@@ -20,5 +20,19 @@ export default defineConfig({
     target: process.env.TAURI_PLATFORM == 'windows' ? 'chrome105' : 'safari13',
     minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    // 优化构建
+    rollupOptions: {
+      output: {
+        // 手动分包，优化加载
+        manualChunks: {
+          'vendor': ['react', 'react-dom'],
+          'tauri': ['@tauri-apps/api', '@tauri-apps/plugin-clipboard-manager'],
+        },
+      },
+    },
+  },
+  // 优化依赖预加载
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'zustand', 'lucide-react'],
   },
 })
