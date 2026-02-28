@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
 import { type ClipboardItem, ContentType } from './types';
-import { useGlobalShortcut } from './hooks/useGlobalShortcut';
-import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard } from 'lucide-react';
+import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
+import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard, Link, Code } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
 // 检测内容类型
@@ -14,11 +14,17 @@ const detectContentType = (content: string): ContentType => {
 
 // 格式化时间
 const formatTime = (timestamp: number): string => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+
+  if (timestamp >= today.getTime()) return '今天';
+  if (timestamp >= yesterday.getTime()) return '昨天';
+
   const diff = Date.now() - timestamp;
-  if (diff < 60000) return '刚刚';
   if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN');
+  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 };
 
 // 截断文本
@@ -27,17 +33,21 @@ const truncate = (text: string, len: number = 100) => {
 };
 
 export default function App() {
-  const { items, addItem, deleteItem, toggleFavorite, updateNote, clearAll } = useClipboardStore();
+  const { items, addItem, deleteItem, toggleFavorite, updateNote, clearAll, settings, setSettings } = useClipboardStore();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'all' | 'fav'>('all');
   const [showSettings, setShowSettings] = useState(false);
+  const [shortcutMode, setShortcutMode] = useState<ShortcutMode>(() => {
+    return localStorage.getItem('clipjar_shortcut_mode') || 'ctrl-shift-v';
+  });
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const lastContentRef = useRef('');
 
   // 全局快捷键
-  useGlobalShortcut();
+  useGlobalShortcut(shortcutMode);
 
   // 剪贴板监听
   useEffect(() => {
@@ -111,6 +121,31 @@ export default function App() {
   }
   filteredItems = filteredItems.slice(0, 50);
 
+  // 键盘导航
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 如果正在编辑备注，不处理键盘导航
+      if (editingNoteId !== null) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, filteredItems.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter' && selectedIndex >= 0) {
+        e.preventDefault();
+        handleCopy(filteredItems[selectedIndex]);
+      } else if (e.key === 'Escape') {
+        setSelectedIndex(-1);
+        setSearch('');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredItems, selectedIndex, handleCopy, editingNoteId]);
+
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-slate-50 to-white text-slate-800">
       {/* 顶部搜索栏 */}
@@ -169,11 +204,12 @@ export default function App() {
           </div>
         ) : (
           <div className="p-2 space-y-1">
-            {filteredItems.map(item => (
+            {filteredItems.map((item, index) => (
               <ItemRow
                 key={item.id}
                 item={item}
                 isCopied={copiedId === item.id}
+                isSelected={selectedIndex === index}
                 onCopy={handleCopy}
                 onDelete={deleteItem}
                 onToggleFavorite={toggleFavorite}
@@ -197,15 +233,15 @@ export default function App() {
 
       {/* 设置弹窗 */}
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} onClearAll={clearAll} itemCount={items.length} />
+        <SettingsModal onClose={() => setShowSettings(false)} onClearAll={clearAll} itemCount={items.length} shortcutMode={shortcutMode} onShortcutChange={setShortcutMode} settings={settings} setSettings={setSettings} />
       )}
     </div>
   );
 }
 
 // 设置弹窗组件
-function SettingsModal({ onClose, onClearAll, itemCount }: { onClose: () => void; onClearAll: () => void; itemCount: number }) {
-  const [startup, setStartup] = useState(false);
+function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcutChange, settings, setSettings }: { onClose: () => void; onClearAll: () => void; itemCount: number; shortcutMode: ShortcutMode; onShortcutChange: (mode: ShortcutMode) => void; settings: { maxHistoryItems: number }; setSettings: (s: { maxHistoryItems: number }) => void }) {
+  const [startup, setStartup] = useState(true);
   const [notifications, setNotifications] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ hasUpdate: boolean; version?: string; notes?: string } | null>(null);
@@ -248,7 +284,7 @@ function SettingsModal({ onClose, onClearAll, itemCount }: { onClose: () => void
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-2 space-y-1">
+        <div className="p-2 space-y-1 overflow-y-auto max-h-[60vh]">
           {/* 开机自启 */}
           <button
             className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors"
@@ -288,31 +324,73 @@ function SettingsModal({ onClose, onClearAll, itemCount }: { onClose: () => void
           </button>
 
           {/* 全局快捷键 */}
-          <div className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-            <div className="flex items-center gap-3">
+          <div className="p-3 rounded-xl bg-slate-50">
+            <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-indigo-50 rounded-lg">
                 <Keyboard className="w-4 h-4 text-indigo-500" />
               </div>
               <div className="text-left">
                 <div className="text-sm font-medium">唤起快捷键</div>
-                <div className="text-xs text-slate-400">双击 Ctrl 唤起</div>
+                <div className="text-xs text-slate-400">点击输入框，按下想要的快捷键</div>
               </div>
             </div>
-            <span className="text-indigo-500 text-xs font-medium">Ctrl+Shift+V</span>
+            <input
+              type="text"
+              readOnly
+              value={shortcutMode}
+              onKeyDown={(e) => {
+                e.preventDefault();
+                const keys: string[] = [];
+                if (e.ctrlKey) keys.push('Ctrl');
+                if (e.altKey) keys.push('Alt');
+                if (e.shiftKey) keys.push('Shift');
+                if (e.metaKey) keys.push('Cmd');
+
+                // 添加按键
+                if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+                  keys.push(e.key.toUpperCase());
+                }
+
+                if (keys.length > 1) {
+                  const newShortcut = keys.join('+');
+                  onShortcutChange(newShortcut);
+                }
+              }}
+              placeholder="点击此处设置快捷键"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 text-center font-medium"
+            />
           </div>
 
-          {/* 记录数量 */}
-          <div className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-50 rounded-lg">
-                <Save className="w-4 h-4 text-green-500" />
-              </div>
-              <div className="text-left">
-                <div className="text-sm font-medium">本地存储</div>
-                <div className="text-xs text-slate-400">{itemCount} 条记录已保存</div>
+          {/* 最大记录数量 */}
+          <div className="p-3 rounded-xl bg-slate-50">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-50 rounded-lg">
+                  <Save className="w-4 h-4 text-green-500" />
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-medium">最大记录数</div>
+                  <div className="text-xs text-slate-400">收藏永久保存，不计入限制</div>
+                </div>
               </div>
             </div>
-            <span className="text-green-500 text-xs">自动保存</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="10"
+                max="1000"
+                value={settings.maxHistoryItems}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 100;
+                  setSettings({ maxHistoryItems: Math.min(1000, Math.max(10, value)) });
+                }}
+                className="w-20 px-2 py-1 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-green-500 text-center"
+              />
+              <span className="text-xs text-slate-400">条（非收藏）</span>
+            </div>
+            <div className="mt-2 text-xs text-slate-400">
+              当前: {itemCount} 条记录（收藏永久保存）
+            </div>
           </div>
 
           <div className="h-px bg-slate-100 my-2" />
@@ -385,10 +463,22 @@ function SettingsModal({ onClose, onClearAll, itemCount }: { onClose: () => void
   );
 }
 
+// 内容类型图标组件
+const TypeIcon = ({ type }: { type: ContentType }) => {
+  if (type === ContentType.LINK) {
+    return <Link className="w-3 h-3 text-blue-400" />;
+  }
+  if (type === ContentType.CODE) {
+    return <Code className="w-3 h-3 text-purple-400" />;
+  }
+  return null;
+};
+
 // 单条记录组件
 function ItemRow({
   item,
   isCopied,
+  isSelected,
   onCopy,
   onDelete,
   onToggleFavorite,
@@ -401,6 +491,7 @@ function ItemRow({
 }: {
   item: ClipboardItem;
   isCopied: boolean;
+  isSelected: boolean;
   onCopy: (item: ClipboardItem) => void;
   onDelete: (id: number) => void;
   onToggleFavorite: (id: number) => void;
@@ -412,11 +503,12 @@ function ItemRow({
   onCancelEdit: () => void;
 }) {
   return (
-    <div className="group flex flex-col p-3 rounded-xl hover:bg-blue-50/50 transition-colors border border-transparent hover:border-blue-100">
+    <div className={`group flex flex-col p-3 rounded-xl transition-colors border cursor-pointer ${isSelected ? 'bg-blue-100 border-blue-200' : 'hover:bg-blue-50/50 border-transparent hover:border-blue-100'}`} onDoubleClick={() => onCopy(item)}>
       <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onCopy(item)}>
+        <div className="flex-1 min-w-0" onClick={() => onCopy(item)}>
           <p className="text-sm text-slate-700 line-clamp-2">{truncate(item.content)}</p>
           <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
+            <TypeIcon type={item.contentType} />
             <span>{formatTime(item.createdAt)}</span>
           </div>
         </div>
