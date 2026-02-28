@@ -14,6 +14,7 @@ build/
 /src-tauri/Cargo.lock
 /src-tauri/*.log
 /src-tauri/WixTools/
+/src-tauri/gen/
 
 # Build outputs
 target/
