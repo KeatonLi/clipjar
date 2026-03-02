@@ -44,11 +44,27 @@ jobs:
           releaseBody: |
             ## 下载
 
-            - **macOS**: 下载 .dmg 文件
-            - **Windows**: 下载 .exe 或 .msi
+            ### macOS
+            - **.dmg**: 磁盘镜像（推荐）
+            - **.app.tar.gz**: 解压后可用
+
+            ### Windows
+            - **.exe**: 安装包
+            - **.msi**: MSI 安装包
+
+            ### Linux
+            - **.AppImage**: 便携版
+            - **.deb**: Debian/Ubuntu
+
+            ## macOS 首次启动说明
+
+            如果打开时提示"文件已损坏"，请在终端执行：
+            ```bash
+            sudo xattr -cr /Applications/ClipJar.app
+            ```
           releaseDraft: false
           prerelease: false
-          bundleTarget: dmg
+          bundleTarget: dmg,app
           args: --target ${{ matrix.target }}
 
   build-windows:
