@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ClipboardItem, FilterType, AppSettings, GroupedItems } from '../types';
+import { APP_CONFIG, DEFAULT_SETTINGS } from '../utils/constants';
 
 interface ClipboardState {
   items: ClipboardItem[];
@@ -28,18 +29,7 @@ interface ClipboardState {
   clearAll: () => void;
 }
 
-const defaultSettings: AppSettings = {
-  maxHistoryItems: 100,
-  autoCleanup: true,
-  cleanupDays: 30,
-  globalShortcut: 'CommandOrControl+Shift+V',
-  startAtLogin: false,
-  showPreview: true,
-};
-
-// 内容最大长度限制，超过则截断存储（优化内存）
-const MAX_CONTENT_LENGTH = 10000;
-
+/** 按时间分组 */
 function groupItems(items: ClipboardItem[]): GroupedItems {
   const now = Date.now();
   const today = new Date(now).setHours(0, 0, 0, 0);
@@ -54,9 +44,11 @@ function groupItems(items: ClipboardItem[]): GroupedItems {
   };
 }
 
+/** 获取过滤后的项目 */
 export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
   let items = [...state.items];
 
+  // 搜索过滤
   if (state.searchQuery.trim()) {
     const query = state.searchQuery.toLowerCase();
     items = items.filter(
@@ -67,12 +59,14 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
     );
   }
 
+  // 类型/收藏过滤
   if (state.filterType === 'favorite') {
     items = items.filter(item => item.isFavorite);
   } else if (state.filterType !== 'all') {
     items = items.filter(item => item.contentType === state.filterType);
   }
 
+  // 标签过滤
   if (state.selectedTag) {
     items = items.filter(item => item.tags.includes(state.selectedTag!));
   }
@@ -80,62 +74,64 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
   return items.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/** 获取分组后的项目 */
 export function getGroupedItems(state: ClipboardState): GroupedItems {
   return groupItems(getFilteredItems(state));
 }
 
+/** 获取选中的项目 */
 export function getSelectedItem(state: ClipboardState): ClipboardItem | null {
   return state.items.find(item => item.id === state.selectedId) || null;
 }
 
 export const useClipboardStore = create<ClipboardState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       items: [],
       selectedId: null,
       searchQuery: '',
       filterType: 'all',
       selectedTag: null,
       isLoading: false,
-      settings: defaultSettings,
+      settings: DEFAULT_SETTINGS,
       showSettings: false,
 
       setItems: items => set({ items }),
 
-      addItem: item =>
-        set(state => {
-          const isDuplicate = state.items.some(
-            existing =>
-              existing.content === item.content &&
-              Math.abs(existing.createdAt - item.createdAt) < 1000
-          );
-          if (isDuplicate) return state;
+      addItem: item => {
+        const state = get();
+        // 重复检测
+        const isDuplicate = state.items.some(
+          existing =>
+            existing.content === item.content &&
+            Math.abs(existing.createdAt - item.createdAt) < APP_CONFIG.DUPLICATE_WINDOW
+        );
+        if (isDuplicate) return;
 
-          // 截断过长的内容以优化内存
-          const truncatedItem = {
-            ...item,
-            content: item.content.length > MAX_CONTENT_LENGTH
-              ? item.content.substring(0, MAX_CONTENT_LENGTH)
-              : item.content,
-          };
+        // 截断过长内容
+        const truncatedItem: ClipboardItem = {
+          ...item,
+          content: item.content.length > APP_CONFIG.MAX_CONTENT_LENGTH
+            ? item.content.substring(0, APP_CONFIG.MAX_CONTENT_LENGTH)
+            : item.content,
+        };
 
-          // 分离收藏和非收藏项目
-          const favoriteItems = state.items.filter(i => i.isFavorite);
-          const normalItems = state.items.filter(i => !i.isFavorite);
+        // 分离收藏和非收藏
+        const favoriteItems = state.items.filter(i => i.isFavorite);
+        const normalItems = state.items.filter(i => !i.isFavorite);
 
-          // 将新项目添加到非收藏列表前面
-          const newNormalItems = [truncatedItem, ...normalItems];
+        // 新项目添加到非收藏列表前面
+        const newNormalItems = [truncatedItem, ...normalItems];
 
-          // 限制非收藏项目数量
-          const limitedNormalItems = newNormalItems.slice(0, state.settings.maxHistoryItems);
+        // 限制非收藏数量
+        const limitedNormalItems = newNormalItems.slice(0, state.settings.maxHistoryItems);
 
-          // 合并但按时间顺序混合（不置顶收藏）
-          const mergedItems = [...favoriteItems, ...limitedNormalItems];
-          // 按时间排序，收藏和普通项目混合
-          const newItems = mergedItems.sort((a, b) => b.createdAt - a.createdAt);
+        // 合并并按时间排序
+        const mergedItems = [...favoriteItems, ...limitedNormalItems];
+        const newItems = mergedItems.sort((a, b) => b.createdAt - a.createdAt);
 
-          return { items: newItems };
-        }),
+        set({ items: newItems });
+      },
 
       updateItem: (id, updates) =>
         set(state => ({
