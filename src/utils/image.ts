@@ -18,8 +18,7 @@ export async function convertImageToBase64(imageData: ImageData): Promise<string
     ctx.putImageData(imageDataObj, 0, 0);
 
     return canvas.toDataURL('image/png');
-  } catch (e) {
-    console.error('[ClipJar] 图片转换失败:', e);
+  } catch {
     return '';
   }
 }
