@@ -2,37 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
 import { type ClipboardItem, ContentType } from './types';
 import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
+import { detectContentType, formatTime, truncate } from './utils';
+import { APP_CONFIG, STORAGE_KEYS } from './utils/constants';
 import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard, Link, Code, Pin } from 'lucide-react';
 import { readText, writeText, readImage, writeImage } from '@tauri-apps/plugin-clipboard-manager';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-
-// 检测内容类型
-const detectContentType = (content: string): ContentType => {
-  if (/^https?:\/\/\S+$/i.test(content)) return ContentType.LINK;
-  if (/[{};]|function|const|let|var|import|export/.test(content) && content.includes('\n')) return ContentType.CODE;
-  return ContentType.TEXT;
-};
-
-// 格式化时间
-const formatTime = (timestamp: number): string => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-
-  if (timestamp >= today.getTime()) return '今天';
-  if (timestamp >= yesterday.getTime()) return '昨天';
-
-  const diff = Date.now() - timestamp;
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-};
-
-// 截断文本
-const truncate = (text: string, len: number = 100) => {
-  return text.length > len ? text.substring(0, len) + '...' : text;
-};
 
 export default function App() {
   const { items, addItem, deleteItem, toggleFavorite, updateNote, clearAll, settings, setSettings } = useClipboardStore();
@@ -40,7 +15,7 @@ export default function App() {
   const [tab, setTab] = useState<'all' | 'fav'>('all');
   const [showSettings, setShowSettings] = useState(false);
   const [shortcutMode, setShortcutMode] = useState<ShortcutMode>(() => {
-    return localStorage.getItem('clipjar_shortcut_mode') || 'ctrl-shift-v';
+    return localStorage.getItem(STORAGE_KEYS.SHORTCUT_MODE) || 'ctrl-shift-v';
   });
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteContent, setNoteContent] = useState('');
@@ -136,7 +111,7 @@ export default function App() {
     checkClipboard();
 
     // 每500ms检查一次剪贴板
-    const interval = setInterval(checkClipboard, 500);
+    const interval = setInterval(checkClipboard, APP_CONFIG.CLIPBOARD_POLL_INTERVAL);
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -163,7 +138,7 @@ export default function App() {
         lastContentRef.current = item.content;
       }
       setCopiedId(item.id);
-      setTimeout(() => setCopiedId(null), 1500);
+      setTimeout(() => setCopiedId(null), APP_CONFIG.COPY_SUCCESS_DURATION);
     } catch (err) {
       console.log('[ClipJar] 复制失败:', err);
     }
@@ -187,7 +162,7 @@ export default function App() {
   if (tab === 'fav') {
     filteredItems = filteredItems.filter(i => i.isFavorite);
   }
-  filteredItems = filteredItems.slice(0, 50);
+  filteredItems = filteredItems.slice(0, APP_CONFIG.LIST_DISPLAY_LIMIT);
 
   // 键盘导航
   useEffect(() => {
