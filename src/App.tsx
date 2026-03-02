@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
-import { type ClipboardItem, ContentType } from './types';
+import { type ClipboardItem, ContentType, type ImageData } from './types';
 import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
 import { detectContentType, formatTime, truncate } from './utils';
+import { convertImageToBase64 } from './utils/image';
 import { APP_CONFIG, STORAGE_KEYS } from './utils/constants';
 import { Star, Copy, Trash2, Search, X, Check, Settings, Grid, Heart, Power, Bell, Trash, Save, Download, Keyboard, Link, Code, Pin } from 'lucide-react';
 import { readText, writeText, readImage, writeImage } from '@tauri-apps/plugin-clipboard-manager';
@@ -37,7 +38,6 @@ export default function App() {
         // 检查文本
         const text = await readText();
         if (text && text.trim() && text !== lastContentRef.current) {
-          console.log('[ClipJar] 检测到新文本:', text.substring(0, 30));
           lastContentRef.current = text;
           const newItem: ClipboardItem = {
             id: Date.now(),
@@ -50,16 +50,14 @@ export default function App() {
             tags: [],
           };
           addItem(newItem);
-          console.log('[ClipJar] 已添加新条目，当前共', useClipboardStore.getState().items.length, '条');
         }
 
         // 检查图片
         try {
-          const imageData = await readImage() as any;
+          const imageData = await readImage() as unknown as ImageData;
           if (imageData && imageData.width && imageData.height) {
             const imageKey = `${imageData.width}x${imageData.height}`;
             if (imageKey !== lastImageRef.current) {
-              console.log('[ClipJar] 检测到新图片:', imageKey);
               lastImageRef.current = imageKey;
 
               // 将 RGBA 数据转换为 base64 PNG
@@ -68,7 +66,7 @@ export default function App() {
                 id: Date.now(),
                 content: `[图片 ${imageData.width}x${imageData.height}]`,
                 contentType: ContentType.IMAGE,
-                imagePath: base64, // 存储 base64 数据
+                imagePath: base64,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 isFavorite: false,
@@ -76,35 +74,14 @@ export default function App() {
                 tags: [],
               };
               addItem(newItem);
-              console.log('[ClipJar] 已添加图片条目');
             }
           }
-        } catch (imgErr) {
+        } catch {
           // 没有图片时忽略错误
         }
-      } catch (err) {
-        console.log('[ClipJar] 读取剪贴板失败:', err);
+      } catch {
+        // 静默处理剪贴板读取错误
       }
-    };
-
-    // 将图片数据转换为 base64
-    const convertImageToBase64 = async (imageData: any): Promise<string> => {
-      const width = imageData.width;
-      const height = imageData.height;
-      // 获取 RGBA 数据
-      const rgba = await imageData.rgba();
-      // 创建 Canvas 来生成 PNG
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return '';
-
-      const imageDataObj = ctx.createImageData(width, height);
-      imageDataObj.data.set(rgba);
-      ctx.putImageData(imageDataObj, 0, 0);
-
-      return canvas.toDataURL('image/png');
     };
 
     // 立即检查一次
@@ -131,7 +108,6 @@ export default function App() {
 
         // 使用 writeImage 写入图片
         await writeImage(uint8Array);
-        console.log('[ClipJar] 图片已复制');
       } else {
         // 文本类型
         await writeText(item.content);
@@ -139,8 +115,8 @@ export default function App() {
       }
       setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), APP_CONFIG.COPY_SUCCESS_DURATION);
-    } catch (err) {
-      console.log('[ClipJar] 复制失败:', err);
+    } catch {
+      // 静默处理复制错误
     }
   }, []);
 
@@ -339,8 +315,8 @@ function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcu
         const window = getCurrentWindow();
         const isOnTop = await window.isAlwaysOnTop();
         setAlwaysOnTop(isOnTop);
-      } catch (err) {
-        console.log('[ClipJar] 初始化设置失败:', err);
+      } catch {
+        // 静默处理设置初始化错误
       }
     };
     initSettings();
@@ -355,8 +331,8 @@ function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcu
         await enable();
       }
       setStartup(!startup);
-    } catch (err) {
-      console.log('[ClipJar] 切换自启失败:', err);
+    } catch {
+      // 静默处理自启切换错误
     }
   };
 
@@ -366,8 +342,8 @@ function SettingsModal({ onClose, onClearAll, itemCount, shortcutMode, onShortcu
       const window = getCurrentWindow();
       await window.setAlwaysOnTop(!alwaysOnTop);
       setAlwaysOnTop(!alwaysOnTop);
-    } catch (err) {
-      console.log('[ClipJar] 切换置顶失败:', err);
+    } catch {
+      // 静默处理置顶切换错误
     }
   };
 

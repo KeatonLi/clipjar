@@ -62,6 +62,13 @@ export interface ClipboardEvent {
   imageData?: Uint8Array;
 }
 
+// 图片数据类型
+export interface ImageData {
+  width: number;
+  height: number;
+  rgba: () => Promise<Uint8Array>;
+}
+
 // 列表分组
 export interface GroupedItems {
   today: ClipboardItem[];
