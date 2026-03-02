@@ -1,11 +1,15 @@
 {
   "name": "clipjar",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "跨平台剪贴板管理器",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:win": "npm run build && tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis",
+    "build:mac": "npm run build && tauri build --target aarch64-apple-darwin --bundles dmg",
+    "build:mac:intel": "npm run build && tauri build --target x86_64-apple-darwin --bundles dmg",
+    "build:linux": "npm run build && tauri build --target x86_64-unknown-linux-gnu --bundles deb,appimage",
     "preview": "vite preview",
     "tauri": "tauri"
   },

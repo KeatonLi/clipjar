@@ -9,16 +9,40 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 获取版本号
-VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-REPO="clipjar/clipjar"
+VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version" 2>/dev/null)
+REPO="KeatonLi/clipjar"
 
 echo -e "${GREEN}ClipJar 发布脚本${NC} v$VERSION"
 echo ""
 
-# 检查 gh 是否安装
+# 检查参数
+FORCE_BUILD=false
+AUTO_PUSH=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force)
+            FORCE_BUILD=true
+            shift
+            ;;
+        --push)
+            AUTO_PUSH=true
+            shift
+            ;;
+        *)
+            echo "用法: $0 [--force] [--push]"
+            echo "  --force  强制构建（不管是否有产物）"
+            echo "  --push   构建后自动推送到远程"
+            exit 0
+            ;;
+    esac
+done
+
+# 检查 gh CLI
 if ! command -v gh &> /dev/null; then
     echo -e "${RED}错误: gh (GitHub CLI) 未安装${NC}"
     echo "安装: brew install gh"
@@ -32,7 +56,7 @@ if ! gh auth status &> /dev/null; then
 fi
 
 # 检查 Git 状态
-if [ -n "$(git status --porcelain)" ]; then
+if [ -z "$FORCE_BUILD" ] && [ -n "$(git status --porcelain)" ]; then
     echo -e "${YELLOW}警告: 有未提交的更改${NC}"
     git status --short
     echo ""
@@ -43,49 +67,58 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
-# 推送代码（如果需要）
-if [ "$1" = "--push" ]; then
-    echo -e "${GREEN}>>> 推送代码到远程...${NC}"
+# 推送代码
+if [ "$AUTO_PUSH" = true ]; then
+    echo -e "${BLUE}>>> 推送代码到远程...${NC}"
     git push
 fi
 
 # 构建
-echo -e "${GREEN}>>> 构建应用...${NC}"
+echo -e "${BLUE}>>> 构建应用...${NC}"
 ./build.sh
 
 # 查找构建产物
-DMG_FILE=$(find target -name "*.dmg" -type f 2>/dev/null | head -1)
+find_outputs() {
+    find src-tauri/target -name "*.dmg" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" 2>/dev/null | \
+        grep -E "bundle" | grep -v ".sig"
+}
 
-if [ -z "$DMG_FILE" ]; then
-    echo -e "${RED}错误: 未找到 DMG 文件${NC}"
+OUTPUTS=$(find_outputs)
+
+if [ -z "$OUTPUTS" ]; then
+    echo -e "${RED}错误: 未找到构建产物${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}找到安装包: $DMG_FILE${NC}"
+echo -e "${GREEN}找到构建产物:${NC}"
+echo "$OUTPUTS"
 
 # 创建 Release
-echo -e "${GREEN}>>> 创建 GitHub Release...${NC}"
+echo -e "${BLUE}>>> 创建 GitHub Release v$VERSION...${NC}"
 
 # 检查是否已存在
-if gh release view v$VERSION $REPO &> /dev/null; then
+if gh release view "v$VERSION" "$REPO" &> /dev/null; then
     echo -e "${YELLOW}版本 v$VERSION 已存在，将删除后重新创建${NC}"
-    gh release delete v$VERSION $REPO --yes
+    gh release delete "v$VERSION" "$REPO" --yes || true
 fi
 
 # 创建 release 并上传
-gh release create v$VERSION \
+gh release create "v$VERSION" \
     --title "ClipJar v$VERSION" \
     --notes "## 下载
 
-- **macOS**: 下载下方 DMG 文件，安装后拖拽到 Applications
+- **macOS**: 下载 .dmg 文件，安装后拖拽到 Applications
+- **Windows**: 下载 .exe 或 .msi 安装
 
 ## 更新内容
 
-- 优化UI界面，添加设置弹窗
-- 添加收藏页面
-- 自动检测版本更新
-- 使用Tauri原生剪贴板插件" \
-    "$DMG_FILE"
+- 优化打包脚本
+- 修复若干问题
+
+## 支持
+
+如有问题请提交 Issue: https://github.com/$REPO/issues" \
+    $OUTPUTS
 
 echo ""
 echo -e "${GREEN}========== 发布完成 ==========${NC}"
