@@ -3,6 +3,7 @@
 export const APP_CONFIG = {
   // 版本
   VERSION: '1.0.3',
+  APP_NAME: 'ClipJar',
   
   // 剪贴板轮询间隔 (ms)
   CLIPBOARD_POLL_INTERVAL: 500,
@@ -21,6 +22,9 @@ export const APP_CONFIG = {
   
   // 重复检测时间窗口 (ms)
   DUPLICATE_WINDOW: 1000,
+  
+  // GitHub 地址
+  GITHUB_URL: 'https://github.com/KeatonLi/clipjar',
 } as const;
 
 /** 存储键名 */
