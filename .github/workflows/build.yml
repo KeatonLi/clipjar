@@ -10,22 +10,11 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-macos:
+    runs-on: macos-latest
     strategy:
-      fail-fast: false
       matrix:
-        include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            bundle: dmg
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            bundle: dmg
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundle: msi,nsis
-
-    runs-on: ${{ matrix.platform }}
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
 
     steps:
       - name: Checkout repository
@@ -55,14 +44,43 @@ jobs:
           releaseBody: |
             ## 下载
 
-            - **macOS**: 下载 .dmg 文件，安装后拖拽到 Applications
-            - **Windows**: 下载 .exe 或 .msi 安装
+            - **macOS**: 下载 .dmg 文件
+            - **Windows**: 下载 .exe 或 .msi
           releaseDraft: false
           prerelease: false
-          bundleTarget: ${{ matrix.bundle }}
+          bundleTarget: dmg
           args: --target ${{ matrix.target }}
 
-  # Linux 构建（可选）
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'ClipJar v__VERSION__'
+          releaseDraft: false
+          prerelease: false
+          bundleTarget: msi,nsis
+
   build-linux:
     runs-on: ubuntu-22.04
 
@@ -95,6 +113,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: 'ClipJar v__VERSION__'
           releaseDraft: false
           bundleTarget: deb,appimage
