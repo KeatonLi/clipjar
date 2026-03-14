@@ -47,18 +47,13 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "both",
+        "allowDowngrades": true,
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
       }
-    },
-    "nsis": {
-      "installMode": "both",
-      "allowDowngrades": true,
-      "installerIcon": "icons/icon.ico",
-      "languages": ["SimpChinese", "English"],
-      "displayLanguageSelector": false,
-      "license": "",
-      "headerImage": "",
-      "sidebarImage": "",
-      "allowElevation": true
     }
   },
   "plugins": {
