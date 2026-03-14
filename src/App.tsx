@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { useClipboardStore, getFilteredItems } from './stores/clipboardStore';
 import { ContentType } from './types';
 import { useGlobalShortcut } from './hooks/useGlobalShortcut';
-import { Search, X, Settings, Grid, Heart } from 'lucide-react';
+import { Search, X, Settings, LayoutGrid, Star, Sparkles } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ItemRow } from './components/ItemRow';
@@ -15,53 +15,81 @@ const detectContentType = (content: string): ContentType => {
   return ContentType.TEXT;
 };
 
-// 节流函数 - 优化高频操作
-function throttle<T extends (...args: any[]) => void>(fn: T, delay: number) {
-  let lastTime = 0;
-  return (...args: Parameters<T>) => {
-    const now = Date.now();
-    if (now - lastTime >= delay) {
-      lastTime = now;
-      fn(...args);
-    }
-  };
-}
-
-// 底部状态栏 - 独立组件避免重渲染
+// 底部状态栏
 const StatusBar = memo(({ count, isFavorite }: { count: number; isFavorite: boolean }) => (
-  <div className="px-4 py-2.5 bg-white/70 backdrop-blur border-t border-slate-200/60 text-xs text-slate-500 flex justify-between items-center shrink-0">
-    <div className="flex items-center gap-2">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+  <div className="px-5 py-3 bg-surface-50/80 backdrop-blur border-t border-surface-200 flex justify-between items-center shrink-0">
+    <div className="flex items-center gap-2.5">
+      <div className="relative">
+        <span className="w-2 h-2 rounded-full bg-green-500 block" />
+        <span className="absolute inset-0 w-2 h-2 rounded-full bg-green-500 animate-ping opacity-40" />
+      </div>
+      <span className="text-xs font-medium text-surface-600">
         {count} 条记录
       </span>
     </div>
-    <span className="text-slate-400">
-      {isFavorite ? '收藏永久保存' : '点击项目复制'}
+    <span className="text-xs text-surface-400">
+      {isFavorite ? '收藏永久保存' : '点击复制，双击打开'}
     </span>
   </div>
 ));
 StatusBar.displayName = 'StatusBar';
 
-// 空状态组件
+// 空状态
 const EmptyState = memo(({ isFavorite }: { isFavorite: boolean }) => (
-  <div className="flex flex-col items-center justify-center h-full text-slate-400">
-    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center mb-5 shadow-sm">
+  <div className="flex flex-col items-center justify-center h-full text-surface-400 px-8">
+    <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary-100 to-primary-50 flex items-center justify-center mb-6 shadow-glow">
       {isFavorite ? (
-        <Heart className="w-9 h-9 text-amber-400" />
+        <Star className="w-10 h-10 text-primary-500 fill-primary-500" />
       ) : (
-        <span className="text-4xl">📋</span>
+        <Sparkles className="w-10 h-10 text-primary-500" />
       )}
     </div>
-    <p className="text-sm font-medium text-slate-500">
-      {isFavorite ? '还没有收藏的内容' : '复制内容会自动保存到这里'}
-    </p>
-    <p className="text-xs text-slate-400 mt-1">
-      {isFavorite ? '点击星标图标收藏重要内容' : '使用快捷键 ⌘⇧V 快速唤起'}
+    <h3 className="text-base font-semibold text-surface-700 mb-1">
+      {isFavorite ? '还没有收藏的内容' : '剪贴板为空'}
+    </h3>
+    <p className="text-sm text-surface-400 text-center max-w-[240px]">
+      {isFavorite 
+        ? '点击条目上的星标图标，将重要内容添加到收藏' 
+        : '复制任何内容，它会自动出现在这里'}
     </p>
   </div>
 ));
 EmptyState.displayName = 'EmptyState';
+
+// Tab 按钮
+const TabButton = memo(({ 
+  active, 
+  onClick, 
+  icon: Icon, 
+  label, 
+  count 
+}: { 
+  active: boolean; 
+  onClick: () => void; 
+  icon: React.ElementType; 
+  label: string; 
+  count: number;
+}) => (
+  <button
+    onClick={onClick}
+    className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl text-sm font-medium transition-all duration-300 ${
+      active
+        ? 'bg-white text-primary-600 shadow-card ring-1 ring-surface-200'
+        : 'text-surface-500 hover:text-surface-700 hover:bg-surface-100/50'
+    }`}
+  >
+    <Icon className={`w-4 h-4 transition-transform duration-300 ${active ? 'scale-110' : ''}`} />
+    <span>{label}</span>
+    <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full transition-colors ${
+      active 
+        ? 'bg-primary-50 text-primary-600' 
+        : 'bg-surface-200 text-surface-500'
+    }`}>
+      {count}
+    </span>
+  </button>
+));
+TabButton.displayName = 'TabButton';
 
 export default function App() {
   const store = useClipboardStore();
@@ -74,36 +102,30 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteContent, setNoteContent] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   
-  const lastContentRef = useRef('');
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const lastContentRef = useClipboardStore(state => state.lastContent);
 
-  // 全局快捷键
   useGlobalShortcut(settings.globalShortcut);
 
-  // 获取过滤后的项目
   const filteredItems = getFilteredItems({
     ...store,
     searchQuery: search,
     filterType: tab === 'fav' ? 'favorite' : 'all',
   });
 
-  // 限制显示数量减少渲染压力
-  const displayItems = filteredItems.slice(0, 30);
+  const displayItems = filteredItems.slice(0, 50);
 
-  // 剪贴板监听 - 使用更长的间隔和节流
+  // 剪贴板监听
   useEffect(() => {
     let mounted = true;
-    abortControllerRef.current = new AbortController();
 
     const checkClipboard = async () => {
       if (!mounted) return;
       
       try {
         const text = await readText();
-        if (text && text.trim() && text !== lastContentRef.current) {
-          lastContentRef.current = text;
-          
+        if (text && text.trim() && text !== lastContentRef) {
           const newItem = {
             id: Date.now(),
             content: text,
@@ -118,37 +140,26 @@ export default function App() {
           addItem(newItem);
         }
       } catch (err) {
-        // 忽略读取错误
+        // 忽略错误
       }
     };
 
-    // 首次检查
     checkClipboard();
-
-    // 使用 1000ms 间隔减少 CPU 占用
     const interval = setInterval(checkClipboard, 1000);
     
-    // 窗口获得焦点时检查
-    const handleFocus = () => checkClipboard();
-    window.addEventListener('focus', handleFocus);
-
     return () => {
       mounted = false;
       clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-      abortControllerRef.current?.abort();
     };
-  }, [addItem]);
+  }, [addItem, lastContentRef]);
 
-  // 复制到剪贴板
+  // 复制
   const handleCopy = useCallback(async (item: { id: number; content: string }) => {
     try {
       await writeText(item.content);
-      lastContentRef.current = item.content;
       setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), 1500);
       
-      // 复制后隐藏窗口
       const window = getCurrentWindow();
       await window.hide();
     } catch (err) {
@@ -173,7 +184,6 @@ export default function App() {
       } else if (e.key === 'Escape') {
         setSelectedIndex(-1);
         setSearch('');
-        // ESC 隐藏窗口
         getCurrentWindow().then(w => w.hide());
       }
     };
@@ -182,83 +192,90 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [displayItems, selectedIndex, handleCopy, editingNoteId]);
 
-  // 保存备注
   const saveNote = useCallback((id: number) => {
     updateNote(id, noteContent.trim());
     setEditingNoteId(null);
     setNoteContent('');
   }, [noteContent, updateNote]);
 
+  const favCount = items.filter(i => i.isFavorite).length;
+
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-blue-50/30 text-slate-800 overflow-hidden">
-      {/* 顶部搜索栏 */}
-      <div className="px-4 py-3.5 bg-white/70 backdrop-blur-xl border-b border-slate-200/60 flex items-center gap-3 shrink-0">
-        <div className="relative flex-1 group">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+    <div className="h-screen flex flex-col bg-gradient-to-br from-surface-50 via-white to-primary-50/30 text-surface-800 overflow-hidden">
+      {/* 顶部栏 */}
+      <div className="px-5 py-4 bg-white/70 backdrop-blur-xl border-b border-surface-200/60 shrink-0">
+        {/* Logo 区域 */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-button">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-surface-800 tracking-tight">ClipJar</h1>
+              <p className="text-xs text-surface-400">剪贴板管理器</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-all duration-200"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 搜索框 */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input
             type="text"
             placeholder="搜索剪贴板内容..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-100/80 border border-slate-200/60 rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-primary-400/50 focus:ring-4 focus:ring-primary-100/30 transition-all"
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            className={`w-full bg-surface-100 border-2 rounded-2xl pl-11 pr-10 py-3 text-sm text-surface-700 placeholder:text-surface-400 transition-all duration-200 outline-none ${
+              isFocused 
+                ? 'bg-white border-primary-300 shadow-glow' 
+                : 'border-transparent hover:bg-surface-50'
+            }`}
           />
           {search ? (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-200/60"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-surface-200/60 flex items-center justify-center text-surface-400 hover:bg-surface-300 hover:text-surface-600 transition-all"
             >
-              <X className="w-3.5 h-3.5 text-slate-400" />
+              <X className="w-3.5 h-3.5" />
             </button>
           ) : null}
         </div>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="p-2.5 rounded-xl text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-all"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Tab 切换 */}
-      <div className="px-4 pt-3 pb-2 bg-white/50 shrink-0">
-        <div className="flex gap-1 p-1 bg-slate-100/80 rounded-xl">
-          <button
+      <div className="px-5 py-3 bg-white/40 shrink-0">
+        <div className="flex gap-2 p-1.5 bg-surface-100/80 rounded-2xl">
+          <TabButton
+            active={tab === 'all'}
             onClick={() => setTab('all')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === 'all'
-                ? 'bg-white text-primary-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <Grid className="w-4 h-4" />
-            全部
-            <span className="px-1.5 py-0.5 text-[10px] bg-slate-200/80 text-slate-600 rounded-full">
-              {items.length}
-            </span>
-          </button>
-          <button
+            icon={LayoutGrid}
+            label="全部"
+            count={items.length}
+          />
+          <TabButton
+            active={tab === 'fav'}
             onClick={() => setTab('fav')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === 'fav'
-                ? 'bg-white text-amber-500 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <Heart className="w-4 h-4" />
-            收藏
-            <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-600 rounded-full">
-              {items.filter(i => i.isFavorite).length}
-            </span>
-          </button>
+            icon={Star}
+            label="收藏"
+            count={favCount}
+          />
         </div>
       </div>
 
       {/* 列表区域 */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 px-5 py-3">
         {displayItems.length === 0 ? (
           <EmptyState isFavorite={tab === 'fav'} />
         ) : (
-          <div className="p-2 space-y-1.5">
+          <div className="space-y-2.5">
             {displayItems.map((item, index) => (
               <ItemRow
                 key={item.id}

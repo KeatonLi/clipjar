@@ -4,6 +4,7 @@ import type { ClipboardItem, FilterType, AppSettings } from '../types';
 
 interface ClipboardState {
   items: ClipboardItem[];
+  lastContent: string;
   selectedId: number | null;
   searchQuery: string;
   filterType: FilterType;
@@ -95,6 +96,7 @@ export const useClipboardStore = create<ClipboardState>()(
   persist(
     (set) => ({
       items: [],
+      lastContent: '',
       selectedId: null,
       searchQuery: '',
       filterType: 'all',
@@ -136,7 +138,10 @@ export const useClipboardStore = create<ClipboardState>()(
             .sort((a, b) => b.createdAt - a.createdAt)
             .slice(0, MAX_ITEMS_IN_MEMORY);
 
-          return { items: newItems };
+          return { 
+            items: newItems,
+            lastContent: optimizedItem.content
+          };
         }),
 
       updateItem: (id, updates) =>

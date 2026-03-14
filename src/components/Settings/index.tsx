@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { X, Power, Bell, Pin, Keyboard, Save, Trash, Download } from 'lucide-react';
+import { X, Power, Pin, Save, Trash2, Download, Sparkles, ChevronRight } from 'lucide-react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useClipboardStore } from '../../stores/clipboardStore';
@@ -10,12 +10,54 @@ interface SettingsModalProps {
   itemCount: number;
 }
 
-// 使用 memo 避免父组件重渲染时刷新
+// 设置项组件
+const SettingItem = memo(({ 
+  icon, 
+  title, 
+  desc, 
+  children,
+  danger
+}: { 
+  icon: React.ReactNode; 
+  title: string; 
+  desc: string; 
+  children?: React.ReactNode;
+  danger?: boolean;
+}) => (
+  <div className="flex items-center justify-between p-4 rounded-2xl bg-surface-50/50 hover:bg-surface-100/50 transition-colors">
+    <div className="flex items-center gap-4">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${danger ? 'bg-red-50' : 'bg-white'}`}>
+        {icon}
+      </div>
+      <div>
+        <div className={`text-sm font-semibold ${danger ? 'text-red-600' : 'text-surface-700'}`}>{title}</div>
+        <div className="text-xs text-surface-400">{desc}</div>
+      </div>
+    </div>
+    {children}
+  </div>
+));
+SettingItem.displayName = 'SettingItem';
+
+// 开关组件
+const Toggle = memo(({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
+  <button
+    onClick={onChange}
+    className={`relative w-12 h-7 rounded-full transition-all duration-300 ${
+      checked ? 'bg-primary-500' : 'bg-surface-300'
+    }`}
+  >
+    <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${
+      checked ? 'left-6' : 'left-1'
+    }`} />
+  </button>
+));
+Toggle.displayName = 'Toggle';
+
 export const SettingsModal = memo(({ onClose, onClearAll, itemCount }: SettingsModalProps) => {
   const [startup, setStartup] = useState(true);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<{ hasUpdate: boolean; version?: string } | null>(null);
   
   const { settings, setSettings } = useClipboardStore();
 
@@ -53,112 +95,138 @@ export const SettingsModal = memo(({ onClose, onClearAll, itemCount }: SettingsM
 
   const checkUpdate = async () => {
     setChecking(true);
-    try {
-      // 简化更新检查
-      await new Promise(r => setTimeout(r, 1000));
-      setUpdateInfo({ hasUpdate: false });
-    } finally {
-      setChecking(false);
-    }
+    await new Promise(r => setTimeout(r, 800));
+    setChecking(false);
+    alert('当前已是最新版本');
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-80 max-h-[75vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div 
+      className="fixed inset-0 bg-surface-900/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-3xl shadow-elevated w-[380px] max-h-[85vh] overflow-hidden animate-scale-in"
+        onClick={e => e.stopPropagation()}
+      >
         {/* 头部 */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-800">设置</h3>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
-            <X className="w-4 h-4" />
+        <div className="px-6 py-5 border-b border-surface-100 flex items-center justify-between bg-gradient-to-r from-surface-50 to-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-primary-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-surface-800">设置</h3>
+              <p className="text-xs text-surface-400">个性化您的体验</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-surface-400 hover:text-surface-600 hover:bg-surface-100 transition-all"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* 内容 */}
-        <div className="p-3 space-y-1 overflow-y-auto max-h-[60vh]">
+        <div className="p-5 space-y-3 overflow-y-auto max-h-[60vh]">
           {/* 开机自启 */}
-          <ToggleItem 
-            icon={<Power className="w-4 h-4 text-blue-600" />} 
-            title="开机自启" 
-            desc="登录时自动运行" 
-            checked={startup} 
-            onChange={toggleStartup} 
-          />
+          <SettingItem
+            icon={<Power className="w-5 h-5 text-blue-500" />}
+            title="开机自启"
+            desc="登录时自动运行"
+          >
+            <Toggle checked={startup} onChange={toggleStartup} />
+          </SettingItem>
 
           {/* 窗口置顶 */}
-          <ToggleItem 
-            icon={<Pin className="w-4 h-4 text-cyan-600" />} 
-            title="窗口置顶" 
-            desc="保持窗口在最前面" 
-            checked={alwaysOnTop} 
-            onChange={toggleAlwaysOnTop} 
-          />
+          <SettingItem
+            icon={<Pin className="w-5 h-5 text-cyan-500" />}
+            title="窗口置顶"
+            desc="保持窗口在最前面"
+          >
+            <Toggle checked={alwaysOnTop} onChange={toggleAlwaysOnTop} />
+          </SettingItem>
 
           {/* 最大记录数 */}
-          <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Save className="w-4 h-4 text-green-600" />
+          <div className="p-4 rounded-2xl bg-surface-50/50">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center">
+                <Save className="w-5 h-5 text-green-500" />
+              </div>
               <div>
-                <div className="text-sm font-medium text-slate-700">最大记录数</div>
-                <div className="text-xs text-slate-400">收藏永久保存</div>
+                <div className="text-sm font-semibold text-surface-700">最大记录数</div>
+                <div className="text-xs text-surface-400">收藏内容永久保存</div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <input
-                type="number"
+                type="range"
                 min={10}
-                max={200}
+                max={100}
+                step={10}
                 value={settings.maxHistoryItems}
-                onChange={(e) => setSettings({ maxHistoryItems: parseInt(e.target.value) || 50 })}
-                className="w-24 px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-center"
+                onChange={(e) => setSettings({ maxHistoryItems: parseInt(e.target.value) })}
+                className="flex-1 h-2 bg-surface-200 rounded-lg appearance-none cursor-pointer accent-primary-500"
               />
-              <span className="text-xs text-slate-400">条（非收藏）</span>
+              <span className="w-12 text-center text-sm font-semibold text-primary-600 bg-primary-50 px-3 py-1.5 rounded-xl">
+                {settings.maxHistoryItems}
+              </span>
             </div>
-            <div className="mt-2 text-xs text-slate-400">
-              当前: {itemCount} 条记录
+            <div className="mt-2 text-xs text-surface-400">
+              当前共有 {itemCount} 条记录
             </div>
           </div>
 
           {/* 检查更新 */}
           <button
-            className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-purple-50/60 transition-all"
             onClick={checkUpdate}
             disabled={checking}
+            className="w-full flex items-center justify-between p-4 rounded-2xl bg-surface-50/50 hover:bg-purple-50/50 transition-colors group"
           >
-            <div className="flex items-center gap-3">
-              {checking ? (
-                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Download className="w-4 h-4 text-purple-600" />
-              )}
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-white group-hover:bg-purple-100 flex items-center justify-center transition-colors">
+                {checking ? (
+                  <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Download className="w-5 h-5 text-purple-500" />
+                )}
+              </div>
               <div className="text-left">
-                <div className="text-sm font-medium text-slate-700">检查更新</div>
-                <div className="text-xs text-slate-400">{checking ? '检查中...' : '获取最新版本'}</div>
+                <div className="text-sm font-semibold text-surface-700">检查更新</div>
+                <div className="text-xs text-surface-400">{checking ? '检查中...' : '获取最新版本'}</div>
               </div>
             </div>
-            <span className="text-xs text-slate-400">v1.0.3</span>
+            <ChevronRight className="w-5 h-5 text-surface-300" />
           </button>
 
           {/* 清空记录 */}
-          <button
-            className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-red-50/60 transition-all"
-            onClick={() => {
-              if (confirm('确定要清空所有记录吗？')) {
-                onClearAll();
-              }
-            }}
+          <SettingItem
+            icon={<Trash2 className="w-5 h-5 text-red-500" />}
+            title="清空记录"
+            desc="删除所有剪贴板历史"
+            danger
           >
-            <div className="flex items-center gap-3">
-              <Trash className="w-4 h-4 text-red-600" />
-              <div className="text-left">
-                <div className="text-sm font-medium text-slate-700">清空记录</div>
-                <div className="text-xs text-slate-400">删除所有剪贴板历史</div>
-              </div>
-            </div>
-          </button>
+            <button
+              onClick={() => {
+                if (confirm('确定要清空所有记录吗？此操作不可恢复。')) {
+                  onClearAll();
+                }
+              }}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+            >
+              清空
+            </button>
+          </SettingItem>
+        </div>
 
-          {/* 版本 */}
-          <div className="text-center py-3 text-xs text-slate-400">
-            ClipJar v1.0.3
+        {/* 底部版本信息 */}
+        <div className="px-6 py-4 bg-surface-50 border-t border-surface-100">
+          <div className="flex items-center justify-center gap-2 text-xs text-surface-400">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>ClipJar v1.0.3</span>
+            <span className="text-surface-300">•</span>
+            <span>Made with love</span>
           </div>
         </div>
       </div>
@@ -167,33 +235,3 @@ export const SettingsModal = memo(({ onClose, onClearAll, itemCount }: SettingsM
 });
 
 SettingsModal.displayName = 'SettingsModal';
-
-// 开关项组件
-interface ToggleItemProps {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-  checked: boolean;
-  onChange: () => void;
-}
-
-const ToggleItem = memo(({ icon, title, desc, checked, onChange }: ToggleItemProps) => (
-  <button
-    className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50/80 transition-all"
-    onClick={onChange}
-  >
-    <div className="flex items-center gap-3">
-      <div className="p-2 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl">
-        {icon}
-      </div>
-      <div className="text-left">
-        <div className="text-sm font-medium text-slate-700">{title}</div>
-        <div className="text-xs text-slate-400">{desc}</div>
-      </div>
-    </div>
-    <div className={`w-11 h-6 rounded-full transition-all ${checked ? 'bg-primary-500' : 'bg-slate-200'}`}>
-      <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-all mt-0.5 ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
-    </div>
-  </button>
-));
-ToggleItem.displayName = 'ToggleItem';

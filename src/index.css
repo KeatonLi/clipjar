@@ -2,20 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @layer base {
   * {
-    @apply border-neutral-200;
+    @apply border-surface-200;
   }
 
   body {
-    @apply font-sans antialiased bg-neutral-50 text-neutral-800;
+    @apply font-sans antialiased bg-surface-50 text-surface-800;
     @apply selection:bg-primary-100 selection:text-primary-700;
   }
 
-  /* 自定义滚动条 - 现代简约风格 */
+  /* 自定义滚动条 - 现代风格 */
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
@@ -23,33 +25,32 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-neutral-300/70 rounded-full;
+    @apply bg-surface-300/80 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-neutral-400/80;
+    @apply bg-surface-400;
   }
 
-  /* 选中项的样式 */
+  /* 选中样式 */
   ::selection {
     @apply bg-primary-100 text-primary-700;
   }
 }
 
 @layer components {
-  /* 卡片基础样式 - 现代简约 */
+  /* 卡片基础样式 */
   .card {
     @apply bg-white rounded-2xl;
     @apply shadow-card transition-all duration-300 ease-out;
-    @apply hover:shadow-card-hover hover:-translate-y-0.5;
-    @apply border border-neutral-100/80;
+    @apply hover:shadow-card-hover;
   }
 
-  /* 按钮基础样式 */
+  /* 按钮样式 */
   .btn {
     @apply inline-flex items-center justify-center px-4 py-2.5 rounded-xl;
     @apply font-medium text-sm transition-all duration-200;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary-300/50 focus:ring-offset-1;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-300/50;
   }
 
   .btn-primary {
@@ -57,131 +58,21 @@
     @apply hover:bg-primary-600 hover:shadow-button-hover;
     @apply active:bg-primary-700 active:scale-[0.98];
     @apply shadow-button;
-    @apply bg-gradient-to-b from-primary-500 to-primary-600;
   }
 
-  .btn-secondary {
-    @apply btn bg-white text-neutral-700 border border-neutral-200/80;
-    @apply hover:bg-neutral-50 hover:border-neutral-300 hover:shadow-button;
-    @apply active:bg-neutral-100 active:scale-[0.98];
-  }
-
-  .btn-ghost {
-    @apply btn text-neutral-600 hover:text-primary-600 hover:bg-primary-50/80;
-    @apply active:scale-[0.98];
-  }
-
-  /* 输入框样式 */
+  /* 输入框 */
   .input {
     @apply w-full px-4 py-2.5 rounded-xl;
-    @apply bg-white border border-neutral-200/80;
-    @apply text-neutral-800 placeholder-neutral-400;
+    @apply bg-surface-100 border-2 border-transparent;
+    @apply text-surface-800 placeholder-surface-400;
     @apply transition-all duration-200;
-    @apply focus:outline-none focus:border-primary-400 focus:ring-3 focus:ring-primary-100/50;
-    @apply hover:border-neutral-300;
-  }
-
-  /* 侧边栏菜单项 */
-  .nav-item {
-    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl;
-    @apply text-neutral-600 transition-all duration-200;
-    @apply hover:bg-primary-50/80 hover:text-primary-600;
-  }
-
-  .nav-item.active {
-    @apply bg-primary-100 text-primary-700 font-medium;
-    @apply shadow-sm;
-  }
-
-  /* 收藏项高亮样式 */
-  .nav-item.highlight:hover {
-    @apply bg-amber-50 text-amber-600;
-  }
-
-  .nav-item.highlight.active {
-    @apply bg-amber-100 text-amber-700;
-  }
-
-  /* 剪贴板项目卡片 */
-  .clipboard-card {
-    @apply card p-4 cursor-pointer;
-  }
-
-  .clipboard-card.selected {
-    @apply ring-2 ring-primary-400/60 border-primary-300;
-    @apply bg-gradient-to-r from-primary-50/50 to-primary-50/30;
-  }
-
-  /* 标签样式 */
-  .tag {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full;
-    @apply text-xs font-medium;
-  }
-
-  .tag-blue {
-    @apply tag bg-primary-100 text-primary-700;
-  }
-
-  /* 空状态 */
-  .empty-state {
-    @apply flex flex-col items-center justify-center py-16 text-center;
+    @apply focus:outline-none focus:bg-white focus:border-primary-300 focus:shadow-glow;
   }
 
   /* 玻璃态效果 */
   .glass {
-    @apply bg-white/85 backdrop-blur-xl border border-white/40;
-    @apply shadow-elevated;
-  }
-
-  /* 搜索栏样式 */
-  .search-bar {
-    @apply relative flex items-center;
-    @apply bg-neutral-100/80 border border-neutral-200/60;
-    @apply rounded-xl transition-all duration-200;
-    @apply hover:bg-white hover:shadow-card hover:border-neutral-200;
-    @apply focus-within:bg-white focus-within:shadow-card focus-within:border-primary-300/50;
-  }
-
-  /* Tab 切换按钮 */
-  .tab-button {
-    @apply flex-1 flex items-center justify-center gap-2 py-2 rounded-lg;
-    @apply text-sm font-medium transition-all duration-200;
-    @apply hover:text-neutral-700;
-  }
-
-  .tab-button.active {
-    @apply bg-white shadow-sm;
-  }
-
-  /* 图标按钮 */
-  .icon-btn {
-    @apply p-2 rounded-lg transition-all duration-200;
-    @apply text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100;
-    @apply active:scale-95;
-  }
-
-  /* 设置项 */
-  .setting-item {
-    @apply flex items-center justify-between p-3.5 rounded-xl;
-    @apply transition-all duration-200;
-    @apply hover:bg-neutral-50/80;
-  }
-
-  /* 时间标签 */
-  .time-badge {
-    @apply text-[11px] text-neutral-400 font-medium;
-    @apply px-1.5 py-0.5 rounded-md bg-neutral-100/60;
-  }
-
-  /* 内容类型标签 */
-  .type-badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md;
-    @apply text-[11px] font-medium;
-  }
-
-  /* 列表项动画 */
-  .list-item-enter {
-    animation: slideUp 0.25s ease-out;
+    @apply bg-white/85 backdrop-blur-xl;
+    @apply border border-white/60;
   }
 
   /* 微光效果 */
@@ -192,12 +83,7 @@
   .shimmer::after {
     content: '';
     @apply absolute inset-0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.4) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
     animation: shimmer 2s infinite;
   }
 }
@@ -218,7 +104,7 @@
     overflow: hidden;
   }
 
-  /* 焦点环扩展 */
+  /* 焦点环 */
   .ring-3 {
     --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
     --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);
@@ -228,10 +114,43 @@
 
 /* 微光动画 */
 @keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Range 滑块样式 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #e4e4e7;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+  transition: all 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }

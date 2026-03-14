@@ -1,25 +1,34 @@
 import { memo, useCallback } from 'react';
-import { Star, Copy, Check, X, Trash2 } from 'lucide-react';
-import { TypeIcon } from '../TypeIcon';
+import { Star, Copy, Check, X, Trash2, Link, Code, FileText, Image } from 'lucide-react';
 import { ContentType, type ClipboardItem } from '../../types';
 
-// 格式化时间 - 移到组件外避免重复创建
+// 格式化时间
 const formatTime = (timestamp: number): string => {
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterday = today - 86400000;
 
-  if (timestamp >= today.getTime()) return '今天';
-  if (timestamp >= yesterday.getTime()) return '昨天';
+  if (timestamp >= today) return new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  if (timestamp >= yesterday) return '昨天';
 
   const diff = Date.now() - timestamp;
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  if (diff < 604800000) {
+    const days = Math.floor(diff / 86400000);
+    return `${days}天前`;
+  }
   return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 };
 
-const truncate = (text: string, len: number = 100) => {
+const truncate = (text: string, len: number = 120) => {
   return text.length > len ? text.substring(0, len) + '...' : text;
+};
+
+// 内容类型配置
+const typeConfig = {
+  [ContentType.LINK]: { icon: Link, color: 'text-blue-500', bg: 'bg-blue-50', label: '链接' },
+  [ContentType.CODE]: { icon: Code, color: 'text-purple-500', bg: 'bg-purple-50', label: '代码' },
+  [ContentType.IMAGE]: { icon: Image, color: 'text-green-500', bg: 'bg-green-50', label: '图片' },
+  [ContentType.TEXT]: { icon: FileText, color: 'text-surface-400', bg: 'bg-surface-100', label: '文本' },
 };
 
 interface ItemRowProps {
@@ -37,7 +46,6 @@ interface ItemRowProps {
   onCancelEdit: () => void;
 }
 
-// 使用 memo 避免不必要的重渲染
 export const ItemRow = memo(({
   item,
   isCopied,
@@ -52,7 +60,6 @@ export const ItemRow = memo(({
   onSaveNote,
   onCancelEdit,
 }: ItemRowProps) => {
-  // 使用 useCallback 稳定回调引用
   const handleCopy = useCallback(() => onCopy(item), [onCopy, item]);
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -68,57 +75,79 @@ export const ItemRow = memo(({
     onStartEdit(item.id, item.note);
   }, [onStartEdit, item.id, item.note]);
 
+  const typeInfo = typeConfig[item.contentType] || typeConfig[ContentType.TEXT];
+  const TypeIcon = typeInfo.icon;
+
   return (
     <div
-      className={`group flex flex-col justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer border min-h-[80px] ${
+      className={`group relative flex flex-col p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${
         isSelected
-          ? 'bg-gradient-to-r from-primary-50 to-primary-50/70 border-primary-200 shadow-sm'
-          : 'bg-white border-slate-100 hover:border-primary-200/60 hover:shadow-card hover:-translate-y-0.5'
+          ? 'bg-white border-primary-300 shadow-card'
+          : item.isFavorite
+          ? 'bg-amber-50/30 border-amber-200/50 hover:border-amber-300/50'
+          : 'bg-white border-transparent hover:border-surface-200 shadow-card hover:shadow-card-hover'
       }`}
-      onDoubleClick={handleCopy}
+      onClick={handleCopy}
     >
-      {/* 文字内容区域 */}
-      <div className="flex-1" onClick={handleCopy}>
-        {item.contentType === ContentType.IMAGE && item.imagePath ? (
-          <div className="mt-1">
-            <img
-              src={item.imagePath}
-              alt="剪贴板图片"
-              className="max-w-full h-auto rounded-lg border border-slate-200"
-              style={{ maxHeight: '120px', objectFit: 'contain' }}
-              loading="lazy"
-            />
+      {/* 收藏标记 */}
+      {item.isFavorite && (
+        <div className="absolute -top-1 -right-1">
+          <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shadow-md">
+            <Star className="w-3 h-3 text-white fill-white" />
           </div>
-        ) : (
-          <p className={`text-sm font-medium leading-relaxed line-clamp-2 ${isSelected ? 'text-slate-800' : 'text-slate-700'}`}>
-            {truncate(item.content)}
-          </p>
-        )}
+        </div>
+      )}
+
+      {/* 内容区域 */}
+      <div className="flex gap-3">
+        {/* 类型图标 */}
+        <div className={`shrink-0 w-10 h-10 rounded-xl ${typeInfo.bg} flex items-center justify-center`}>
+          <TypeIcon className={`w-5 h-5 ${typeInfo.color}`} />
+        </div>
+
+        {/* 文本内容 */}
+        <div className="flex-1 min-w-0">
+          {item.contentType === ContentType.IMAGE && item.imagePath ? (
+            <div className="mt-1">
+              <img
+                src={item.imagePath}
+                alt="图片"
+                className="max-w-full h-auto max-h-[100px] rounded-xl border border-surface-200 object-contain"
+                loading="lazy"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-surface-700 leading-relaxed break-all line-clamp-3">
+              {truncate(item.content, 200)}
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* 备注区域 - 收藏时显示 */}
+      {/* 备注区域 */}
       {item.isFavorite && (
-        <div className="mt-2 pt-2 border-t border-slate-100">
+        <div className="mt-3 pt-3 border-t border-surface-100">
           {isEditingNote ? (
             <div className="flex items-start gap-2">
               <textarea
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
                 placeholder="添加备注..."
-                className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-primary-400 focus:ring-3 focus:ring-primary-100/40 transition-all"
+                className="flex-1 text-xs bg-white border border-primary-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                 rows={2}
                 autoFocus
+                onClick={(e) => e.stopPropagation()}
               />
               <div className="flex flex-col gap-1">
                 <button
                   onClick={handleSave}
-                  className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+                  className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200 transition-colors"
                 >
                   <Check className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={onCancelEdit}
-                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); onCancelEdit(); }}
+                  className="w-7 h-7 rounded-lg bg-surface-100 text-surface-500 flex items-center justify-center hover:bg-surface-200 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -126,57 +155,65 @@ export const ItemRow = memo(({
             </div>
           ) : (
             <div
-              className="text-xs text-slate-500 cursor-pointer hover:text-primary-600 flex items-center gap-1.5 transition-colors group/note"
+              className="inline-flex items-center gap-1.5 cursor-pointer group/note"
               onClick={handleStartEdit}
             >
               {item.note ? (
-                <span className="bg-gradient-to-r from-amber-50 to-amber-100 text-amber-700 px-2.5 py-1 rounded-lg font-medium">
+                <span className="text-xs text-amber-700 bg-amber-100 px-3 py-1.5 rounded-lg font-medium">
                   {item.note}
                 </span>
               ) : (
-                <>
-                  <span className="text-slate-400 group-hover/note:text-primary-500">+</span>
-                  <span className="text-slate-400 group-hover/note:text-primary-600">添加备注</span>
-                </>
+                <span className="text-xs text-surface-400 hover:text-primary-500 flex items-center gap-1">
+                  <span className="w-4 h-4 rounded-full bg-surface-100 flex items-center justify-center text-[10px]">+</span>
+                  添加备注
+                </span>
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* 底部区域：时间在左，按钮在右 */}
-      <div className="flex items-center justify-between mt-2">
-        <div className="flex items-center gap-2">
-          <TypeIcon type={item.contentType} />
-          <span className="time-badge">{formatTime(item.createdAt)}</span>
+      {/* 底部操作栏 */}
+      <div className="flex items-center justify-between mt-3 pt-2">
+        {/* 左侧：时间和类型 */}
+        <div className="flex items-center gap-2.5">
+          <span className="text-[11px] font-medium text-surface-400">
+            {formatTime(item.createdAt)}
+          </span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full ${typeInfo.bg} ${typeInfo.color}`}>
+            {typeInfo.label}
+          </span>
         </div>
 
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-200">
+        {/* 右侧：操作按钮 */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <button
             onClick={handleToggle}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
               item.isFavorite
                 ? 'text-amber-400 bg-amber-50'
-                : 'text-slate-300 hover:text-amber-400 hover:bg-amber-50/50'
+                : 'text-surface-300 hover:text-amber-400 hover:bg-amber-50'
             }`}
           >
-            <Star className={`w-3.5 h-3.5 ${item.isFavorite ? 'fill-current' : ''}`} />
+            <Star className={`w-4 h-4 ${item.isFavorite ? 'fill-current' : ''}`} />
           </button>
+          
           <button
             onClick={handleCopy}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
               isCopied
                 ? 'text-green-500 bg-green-50'
-                : 'text-slate-300 hover:text-green-500 hover:bg-green-50/50'
+                : 'text-surface-300 hover:text-primary-500 hover:bg-primary-50'
             }`}
           >
-            {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
           </button>
+          
           <button
             onClick={handleDelete}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50/50 transition-all duration-200"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-surface-300 hover:text-red-500 hover:bg-red-50 transition-all"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
