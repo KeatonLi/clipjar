@@ -30,7 +30,7 @@ interface ClipboardState {
 }
 
 const defaultSettings: AppSettings = {
-  maxHistoryItems: 50, // 降低默认数量减少内存
+  maxHistoryItems: 100, // 降低默认数量减少内存
   autoCleanup: true,
   cleanupDays: 7, // 缩短清理周期
   globalShortcut: 'CommandOrControl+Shift+V',

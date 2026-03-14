@@ -162,8 +162,8 @@ export const SettingsModal = memo(({ onClose, onClearAll, itemCount }: SettingsM
             <div className="flex items-center gap-4">
               <input
                 type="range"
-                min={10}
-                max={100}
+                min={100}
+                max={200}
                 step={10}
                 value={settings.maxHistoryItems}
                 onChange={(e) => setSettings({ maxHistoryItems: parseInt(e.target.value) })}
@@ -224,7 +224,7 @@ export const SettingsModal = memo(({ onClose, onClearAll, itemCount }: SettingsM
         <div className="px-6 py-4 bg-surface-50 border-t border-surface-100">
           <div className="flex items-center justify-center gap-2 text-xs text-surface-400">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>ClipJar v1.0.3</span>
+            <span>ClipJar v1.0.4</span>
             <span className="text-surface-300">•</span>
             <span>Made with love</span>
           </div>

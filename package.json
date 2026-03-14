@@ -1,6 +1,6 @@
 {
   "name": "clipjar",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "跨平台剪贴板管理器",
   "type": "module",
   "scripts": {
