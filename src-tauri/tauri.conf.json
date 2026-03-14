@@ -47,12 +47,6 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
-      },
-      "nsis": {
-        "installMode": "both",
-        "allowDowngrades": true,
-        "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": false
       }
     }
   },
