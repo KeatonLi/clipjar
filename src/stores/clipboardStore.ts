@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ClipboardItem, FilterType, AppSettings } from '../types';
+import type { ClipboardItem, FilterType, AppSettings, GroupedItems } from '../types';
+import { APP_CONFIG, DEFAULT_SETTINGS } from '../utils/constants';
 
 interface ClipboardState {
   items: ClipboardItem[];
-  lastContent: string;
   selectedId: number | null;
   searchQuery: string;
   filterType: FilterType;
@@ -29,38 +29,26 @@ interface ClipboardState {
   clearAll: () => void;
 }
 
-const defaultSettings: AppSettings = {
-  maxHistoryItems: 100, // 降低默认数量减少内存
-  autoCleanup: true,
-  cleanupDays: 7, // 缩短清理周期
-  globalShortcut: 'CommandOrControl+Shift+V',
-  startAtLogin: false,
-  showPreview: true,
-};
+/** 按时间分组 */
+function groupItems(items: ClipboardItem[]): GroupedItems {
+  const now = Date.now();
+  const today = new Date(now).setHours(0, 0, 0, 0);
+  const yesterday = today - 24 * 60 * 60 * 1000;
+  const thisWeekStart = today - (new Date(today).getDay() || 7) * 24 * 60 * 60 * 1000;
 
-// 内存优化配置
-const MAX_CONTENT_LENGTH = 5000; // 内容截断长度
-const MAX_IMAGE_SIZE = 1024 * 1024; // 最大图片 1MB
-const MAX_ITEMS_IN_MEMORY = 100; // 内存中最大条目数
-
-// 压缩存储的图片数据
-function compressImageData(item: ClipboardItem): ClipboardItem {
-  if (item.contentType === 'image' && item.imagePath) {
-    // 如果图片太大，只保留缩略图标识
-    if (item.imagePath.length > MAX_IMAGE_SIZE) {
-      return {
-        ...item,
-        imagePath: undefined, // 大图不存入内存
-        content: '[图片 - 已压缩存储]',
-      };
-    }
-  }
-  return item;
+  return {
+    today: items.filter(item => item.createdAt >= today),
+    yesterday: items.filter(item => item.createdAt >= yesterday && item.createdAt < today),
+    thisWeek: items.filter(item => item.createdAt >= thisWeekStart && item.createdAt < yesterday),
+    earlier: items.filter(item => item.createdAt < thisWeekStart),
+  };
 }
 
+/** 获取过滤后的项目 */
 export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
-  let items = state.items;
+  let items = [...state.items];
 
+  // 搜索过滤
   if (state.searchQuery.trim()) {
     const query = state.searchQuery.toLowerCase();
     items = items.filter(
@@ -71,12 +59,14 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
     );
   }
 
+  // 类型/收藏过滤
   if (state.filterType === 'favorite') {
     items = items.filter(item => item.isFavorite);
   } else if (state.filterType !== 'all') {
     items = items.filter(item => item.contentType === state.filterType);
   }
 
+  // 标签过滤
   if (state.selectedTag) {
     items = items.filter(item => item.tags.includes(state.selectedTag!));
   }
@@ -84,88 +74,64 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
   return items.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-// 按时间分组
-export function getGroupedItems(state: ClipboardState): Record<string, ClipboardItem[]> {
-  const items = getFilteredItems(state);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-  const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+/** 获取分组后的项目 */
+export function getGroupedItems(state: ClipboardState): GroupedItems {
+  return groupItems(getFilteredItems(state));
+}
 
-  const groups: Record<string, ClipboardItem[]> = {
-    today: [],
-    yesterday: [],
-    thisWeek: [],
-    earlier: [],
-  };
-
-  for (const item of items) {
-    const itemDate = new Date(item.createdAt);
-    if (itemDate >= today) {
-      groups.today.push(item);
-    } else if (itemDate >= yesterday) {
-      groups.yesterday.push(item);
-    } else if (itemDate >= weekAgo) {
-      groups.thisWeek.push(item);
-    } else {
-      groups.earlier.push(item);
-    }
-  }
-
-  return groups;
+/** 获取选中的项目 */
+export function getSelectedItem(state: ClipboardState): ClipboardItem | null {
+  return state.items.find(item => item.id === state.selectedId) || null;
 }
 
 export const useClipboardStore = create<ClipboardState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       items: [],
-      lastContent: '',
       selectedId: null,
       searchQuery: '',
       filterType: 'all',
       selectedTag: null,
       isLoading: false,
-      settings: defaultSettings,
+      settings: DEFAULT_SETTINGS,
       showSettings: false,
 
-      setItems: items => set({ items: items.slice(0, MAX_ITEMS_IN_MEMORY) }),
+      setItems: items => set({ items }),
 
-      addItem: item =>
-        set(state => {
-          // 检查重复
-          const isDuplicate = state.items.some(
-            existing =>
-              existing.content === item.content &&
-              Math.abs(existing.createdAt - item.createdAt) < 2000
-          );
-          if (isDuplicate) return state;
+      addItem: item => {
+        const state = get();
+        // 重复检测
+        const isDuplicate = state.items.some(
+          existing =>
+            existing.content === item.content &&
+            Math.abs(existing.createdAt - item.createdAt) < APP_CONFIG.DUPLICATE_WINDOW
+        );
+        if (isDuplicate) return;
 
-          // 压缩优化
-          const optimizedItem = compressImageData({
-            ...item,
-            content: item.content.length > MAX_CONTENT_LENGTH
-              ? item.content.substring(0, MAX_CONTENT_LENGTH) + '...'
-              : item.content,
-          });
+        // 截断过长内容
+        const truncatedItem: ClipboardItem = {
+          ...item,
+          content: item.content.length > APP_CONFIG.MAX_CONTENT_LENGTH
+            ? item.content.substring(0, APP_CONFIG.MAX_CONTENT_LENGTH)
+            : item.content,
+        };
 
-          // 分离收藏和普通
-          const favoriteItems = state.items.filter(i => i.isFavorite);
-          const normalItems = state.items.filter(i => !i.isFavorite);
+        // 分离收藏和非收藏
+        const favoriteItems = state.items.filter(i => i.isFavorite);
+        const normalItems = state.items.filter(i => !i.isFavorite);
 
-          // 添加新项并限制数量
-          const newNormalItems = [optimizedItem, ...normalItems]
-            .slice(0, state.settings.maxHistoryItems);
+        // 新项目添加到非收藏列表前面
+        const newNormalItems = [truncatedItem, ...normalItems];
 
-          // 合并并排序
-          const newItems = [...favoriteItems, ...newNormalItems]
-            .sort((a, b) => b.createdAt - a.createdAt)
-            .slice(0, MAX_ITEMS_IN_MEMORY);
+        // 限制非收藏数量
+        const limitedNormalItems = newNormalItems.slice(0, state.settings.maxHistoryItems);
 
-          return { 
-            items: newItems,
-            lastContent: optimizedItem.content
-          };
-        }),
+        // 合并并按时间排序
+        const mergedItems = [...favoriteItems, ...limitedNormalItems];
+        const newItems = mergedItems.sort((a, b) => b.createdAt - a.createdAt);
+
+        set({ items: newItems });
+      },
 
       updateItem: (id, updates) =>
         set(state => ({
@@ -224,16 +190,6 @@ export const useClipboardStore = create<ClipboardState>()(
         settings: state.settings,
         items: state.items,
       }),
-      // 限制存储大小
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          // 重新加载时清理过期数据
-          const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-          state.items = state.items.filter(item => 
-            item.isFavorite || item.createdAt > cutoff
-          ).slice(0, MAX_ITEMS_IN_MEMORY);
-        }
-      },
     }
   )
 );

@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { type ClipboardItem, ContentType } from '../types';
+import { APP_CONFIG } from '../utils/constants';
 
 const detectContentType = (content: string): ContentType => {
   if (/^https?:\/\/\S+$/i.test(content)) {
@@ -18,7 +19,6 @@ export function useClipboard() {
   const intervalRef = useRef<number | null>(null);
 
   const initClipboard = useCallback(() => {
-    // 直接使用前端轮询，更可靠
     const checkClipboard = async () => {
       try {
         const text = await navigator.clipboard.readText();
@@ -40,18 +40,14 @@ export function useClipboard() {
           };
 
           storeAddItem(newItem);
-          console.log('[ClipJar] New clipboard item:', text.substring(0, 30));
         }
-      } catch (err) {
+      } catch {
         // 静默处理剪贴板读取错误
       }
     };
 
-    // 立即检查一次
     checkClipboard();
-
-    // 每800ms检查一次剪贴板
-    intervalRef.current = window.setInterval(checkClipboard, 800);
+    intervalRef.current = window.setInterval(checkClipboard, APP_CONFIG.CLIPBOARD_POLL_INTERVAL);
 
     return () => {
       if (intervalRef.current) {
@@ -64,11 +60,9 @@ export function useClipboard() {
   const copyToClipboard = useCallback(async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
-      // 更新最后内容，避免触发自己的复制
       lastContentRef.current = content;
       return true;
     } catch {
-      console.error('Failed to copy');
       return false;
     }
   }, []);

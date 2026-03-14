@@ -95,8 +95,8 @@ export const ClipboardItem = memo(function ClipboardItem({ item }: ClipboardItem
       setIsCopied(true);
       incrementUseCount(item.id);
       setTimeout(() => setIsCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
+    } catch {
+      // 静默处理复制错误
     }
   };
 

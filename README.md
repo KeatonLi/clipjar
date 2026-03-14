@@ -107,39 +107,60 @@ ClipJar 针对内存占用做了以下优化：
 
 ```
 clipjar/
-├── src/
-│   ├── components/          # UI 组件
-│   │   ├── ItemRow/        # 列表项组件
-│   │   ├── Settings/       # 设置弹窗
-│   │   └── TypeIcon/       # 类型图标
+├── src/                    # 前端源码 (React + TypeScript)
+│   ├── components/         # UI 组件
 │   ├── hooks/              # 自定义 Hooks
 │   ├── stores/             # Zustand 状态管理
 │   ├── types/              # TypeScript 类型
 │   └── App.tsx             # 主应用组件
-├── src-tauri/              # Tauri 后端
+├── src-tauri/              # Tauri 后端 (Rust)
 │   └── src/
 │       └── main.rs         # 入口文件
-├── scripts/                # 构建脚本
-│   ├── release.sh          # 发布脚本
-│   └── build-installer.ps1 # Windows 构建
+├── scripts/                # 脚本工具
+│   ├── bump-version.cjs    # 一键版本更新
+│   ├── generate-favicon.cjs
+│   ├── generate-ico.cjs
+│   ├── release.sh          # Linux/Mac 发布
+│   └── release-local.ps1   # Windows 本地发布
+├── .github/workflows/      # GitHub Actions
+│   └── release.yml         # 自动发布工作流
+├── CHANGELOG.md           # 变更日志
 └── README.md
 ```
 
 ---
 
-## 📦 发布
+## 🚢 发布
+
+### 自动发布（推荐）
+
+推送 GitHub tag 后会自动构建并创建 Release：
+
+```bash
+# 方式一：指定版本号
+node scripts/bump-version.js 1.0.5
+
+# 方式二：自动递增版本
+node scripts/bump-version.js patch   # 1.0.4 → 1.0.5
+node scripts/bump-version.js minor   # 1.0.4 → 1.1.0
+node scripts/bump-version.js major   # 1.0.4 → 2.0.0
+
+# 提交并打标签
+git add -A
+git commit -m "release: v1.0.5"
+git tag v1.0.5
+git push origin main --tags
+```
+
+推送 tag 后会自动在 GitHub Actions 构建：
+- macOS (Intel + Apple Silicon)
+- Windows
+- Linux
 
 ### 本地打包
 
 ```bash
 npm run tauri build
-```
-
-### 一键发布到 GitHub
-
-```bash
-# 使用发布脚本
-.\scripts\release-local.ps1 v1.0.3
 ```
 
 ---
