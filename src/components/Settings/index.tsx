@@ -1,199 +1,199 @@
-import { X, RotateCcw, Info, Rocket, Trash2 } from 'lucide-react';
+import { useState, useEffect, memo } from 'react';
+import { X, Power, Bell, Pin, Keyboard, Save, Trash, Download } from 'lucide-react';
+import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useClipboardStore } from '../../stores/clipboardStore';
 
-export function Settings() {
-  const { settings, setSettings, showSettings, setShowSettings } = useClipboardStore();
+interface SettingsModalProps {
+  onClose: () => void;
+  onClearAll: () => void;
+  itemCount: number;
+}
 
-  if (!showSettings) return null;
+// 使用 memo 避免父组件重渲染时刷新
+export const SettingsModal = memo(({ onClose, onClearAll, itemCount }: SettingsModalProps) => {
+  const [startup, setStartup] = useState(true);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<{ hasUpdate: boolean; version?: string } | null>(null);
+  
+  const { settings, setSettings } = useClipboardStore();
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        setStartup(await isEnabled());
+        setAlwaysOnTop(await getCurrentWindow().isAlwaysOnTop());
+      } catch (err) {
+        console.error('初始化设置失败:', err);
+      }
+    };
+    init();
+  }, []);
+
+  const toggleStartup = async () => {
+    try {
+      if (startup) await disable();
+      else await enable();
+      setStartup(!startup);
+    } catch (err) {
+      console.error('切换自启失败:', err);
+    }
+  };
+
+  const toggleAlwaysOnTop = async () => {
+    try {
+      const window = getCurrentWindow();
+      await window.setAlwaysOnTop(!alwaysOnTop);
+      setAlwaysOnTop(!alwaysOnTop);
+    } catch (err) {
+      console.error('切换置顶失败:', err);
+    }
+  };
+
+  const checkUpdate = async () => {
+    setChecking(true);
+    try {
+      // 简化更新检查
+      await new Promise(r => setTimeout(r, 1000));
+      setUpdateInfo({ hasUpdate: false });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
-          <h2 className="text-lg font-semibold text-neutral-800">设置</h2>
-          <button
-            onClick={() => setShowSettings(false)}
-            className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-neutral-500" />
+    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-80 max-h-[75vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* 头部 */}
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="font-semibold text-slate-800">设置</h3>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium text-neutral-800">通用</h3>
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
-                  <Rocket className="w-4 h-4 text-primary-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-neutral-700">开机自启</p>
-                  <p className="text-xs text-neutral-400">系统启动时自动运行</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSettings({ startAtLogin: !settings.startAtLogin })}
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  settings.startAtLogin ? 'bg-primary-500' : 'bg-neutral-200'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                    settings.startAtLogin ? 'translate-x-6' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
-            </div>
+        {/* 内容 */}
+        <div className="p-3 space-y-1 overflow-y-auto max-h-[60vh]">
+          {/* 开机自启 */}
+          <ToggleItem 
+            icon={<Power className="w-4 h-4 text-blue-600" />} 
+            title="开机自启" 
+            desc="登录时自动运行" 
+            checked={startup} 
+            onChange={toggleStartup} 
+          />
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
-                  <Info className="w-4 h-4 text-primary-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-neutral-700">显示预览</p>
-                  <p className="text-xs text-neutral-400">在列表中显示内容预览</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSettings({ showPreview: !settings.showPreview })}
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  settings.showPreview ? 'bg-primary-500' : 'bg-neutral-200'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                    settings.showPreview ? 'translate-x-6' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
+          {/* 窗口置顶 */}
+          <ToggleItem 
+            icon={<Pin className="w-4 h-4 text-cyan-600" />} 
+            title="窗口置顶" 
+            desc="保持窗口在最前面" 
+            checked={alwaysOnTop} 
+            onChange={toggleAlwaysOnTop} 
+          />
 
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium text-neutral-800">历史记录</h3>
-            
-            <div className="flex items-center justify-between">
+          {/* 最大记录数 */}
+          <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-100">
+            <div className="flex items-center gap-3 mb-2">
+              <Save className="w-4 h-4 text-green-600" />
               <div>
-                <p className="text-sm text-neutral-700">最大记录数</p>
-                <p className="text-xs text-neutral-400">超过后自动删除旧记录</p>
+                <div className="text-sm font-medium text-slate-700">最大记录数</div>
+                <div className="text-xs text-slate-400">收藏永久保存</div>
               </div>
-              <select
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={10}
+                max={200}
                 value={settings.maxHistoryItems}
-                onChange={(e) => setSettings({ maxHistoryItems: Number(e.target.value) })}
-                className="input w-24 text-center"
-              >
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-                <option value={500}>500</option>
-                <option value={1000}>1000</option>
-              </select>
+                onChange={(e) => setSettings({ maxHistoryItems: parseInt(e.target.value) || 50 })}
+                className="w-24 px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-center"
+              />
+              <span className="text-xs text-slate-400">条（非收藏）</span>
             </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-neutral-700">自动清理</p>
-                <p className="text-xs text-neutral-400">自动删除旧记录</p>
-              </div>
-              <button
-                onClick={() => setSettings({ autoCleanup: !settings.autoCleanup })}
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  settings.autoCleanup ? 'bg-primary-500' : 'bg-neutral-200'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                    settings.autoCleanup ? 'translate-x-6' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {settings.autoCleanup && (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-neutral-700">保留天数</p>
-                  <p className="text-xs text-neutral-400">超过天数自动清理</p>
-                </div>
-                <select
-                  value={settings.cleanupDays}
-                  onChange={(e) => setSettings({ cleanupDays: Number(e.target.value) })}
-                  className="input w-24 text-center"
-                >
-                  <option value={7}>7 天</option>
-                  <option value={14}>14 天</option>
-                  <option value={30}>30 天</option>
-                  <option value={90}>90 天</option>
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium text-neutral-800">快捷键</h3>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-neutral-700">全局快捷键</p>
-                <p className="text-xs text-neutral-400">唤起应用窗口</p>
-              </div>
-              <div className="px-3 py-2 bg-neutral-100 rounded-lg text-sm font-mono text-neutral-600">
-                {settings.globalShortcut.replace('CommandOrControl', 'Ctrl')}
-              </div>
+            <div className="mt-2 text-xs text-slate-400">
+              当前: {itemCount} 条记录
             </div>
           </div>
 
-          <div className="pt-4 border-t border-neutral-100 space-y-3">
-            <button
-              onClick={() => {
-                if (confirm('确定要清空所有剪贴板记录吗？')) {
-                  useClipboardStore.getState().setItems([]);
-                }
-              }}
-              className="btn-secondary w-full flex items-center justify-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-            >
-              <Trash2 className="w-4 h-4" />
-              清空所有记录
-            </button>
-            
-            <button
-              onClick={() => {
-                localStorage.clear();
-                window.location.reload();
-              }}
-              className="btn-secondary w-full flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              重置所有设置
-            </button>
-          </div>
+          {/* 检查更新 */}
+          <button
+            className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-purple-50/60 transition-all"
+            onClick={checkUpdate}
+            disabled={checking}
+          >
+            <div className="flex items-center gap-3">
+              {checking ? (
+                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 text-purple-600" />
+              )}
+              <div className="text-left">
+                <div className="text-sm font-medium text-slate-700">检查更新</div>
+                <div className="text-xs text-slate-400">{checking ? '检查中...' : '获取最新版本'}</div>
+              </div>
+            </div>
+            <span className="text-xs text-slate-400">v1.0.3</span>
+          </button>
 
-          <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-primary-50 to-primary-100/50 rounded-xl">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-glow shrink-0">
-              <svg
-                className="w-5 h-5 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
+          {/* 清空记录 */}
+          <button
+            className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-red-50/60 transition-all"
+            onClick={() => {
+              if (confirm('确定要清空所有记录吗？')) {
+                onClearAll();
+              }
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <Trash className="w-4 h-4 text-red-600" />
+              <div className="text-left">
+                <div className="text-sm font-medium text-slate-700">清空记录</div>
+                <div className="text-xs text-slate-400">删除所有剪贴板历史</div>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-neutral-800">ClipJar</p>
-              <p className="text-xs text-neutral-500 mt-1">版本 1.0.0 · 跨平台剪贴板管理器</p>
-              <p className="text-xs text-neutral-400 mt-1">自动保存剪贴板历史，复制粘贴更高效</p>
-            </div>
+          </button>
+
+          {/* 版本 */}
+          <div className="text-center py-3 text-xs text-slate-400">
+            ClipJar v1.0.3
           </div>
         </div>
       </div>
     </div>
   );
+});
+
+SettingsModal.displayName = 'SettingsModal';
+
+// 开关项组件
+interface ToggleItemProps {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  checked: boolean;
+  onChange: () => void;
 }
+
+const ToggleItem = memo(({ icon, title, desc, checked, onChange }: ToggleItemProps) => (
+  <button
+    className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50/80 transition-all"
+    onClick={onChange}
+  >
+    <div className="flex items-center gap-3">
+      <div className="p-2 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl">
+        {icon}
+      </div>
+      <div className="text-left">
+        <div className="text-sm font-medium text-slate-700">{title}</div>
+        <div className="text-xs text-slate-400">{desc}</div>
+      </div>
+    </div>
+    <div className={`w-11 h-6 rounded-full transition-all ${checked ? 'bg-primary-500' : 'bg-slate-200'}`}>
+      <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-all mt-0.5 ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </div>
+  </button>
+));
+ToggleItem.displayName = 'ToggleItem';

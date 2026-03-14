@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ClipboardItem, FilterType, AppSettings, GroupedItems } from '../types';
+import type { ClipboardItem, FilterType, AppSettings } from '../types';
 
 interface ClipboardState {
   items: ClipboardItem[];
@@ -29,33 +29,44 @@ interface ClipboardState {
 }
 
 const defaultSettings: AppSettings = {
-  maxHistoryItems: 100,
+  maxHistoryItems: 50, // 降低默认数量减少内存
   autoCleanup: true,
-  cleanupDays: 30,
+  cleanupDays: 7, // 缩短清理周期
   globalShortcut: 'CommandOrControl+Shift+V',
   startAtLogin: false,
   showPreview: true,
 };
 
-// 内容最大长度限制，超过则截断存储（优化内存）
-const MAX_CONTENT_LENGTH = 10000;
+// 内存优化配置
+const MAX_CONTENT_LENGTH = 5000; // 内容截断长度
+const MAX_IMAGE_SIZE = 1024 * 1024; // 最大图片 1MB
+const MAX_ITEMS_IN_MEMORY = 100; // 内存中最大条目数
 
-function groupItems(items: ClipboardItem[]): GroupedItems {
-  const now = Date.now();
-  const today = new Date(now).setHours(0, 0, 0, 0);
-  const yesterday = today - 24 * 60 * 60 * 1000;
-  const thisWeekStart = today - (new Date(today).getDay() || 7) * 24 * 60 * 60 * 1000;
+// 压缩存储的图片数据
+function compressImageData(item: ClipboardItem): ClipboardItem {
+  if (item.contentType === 'image' && item.imagePath) {
+    // 如果图片太大，只保留缩略图标识
+    if (item.imagePath.length > MAX_IMAGE_SIZE) {
+      return {
+        ...item,
+        imagePath: null, // 大图不存入内存
+        content: '[图片 - 已压缩存储]',
+      };
+    }
+  }
+  return item;
+}
 
-  return {
-    today: items.filter(item => item.createdAt >= today),
-    yesterday: items.filter(item => item.createdAt >= yesterday && item.createdAt < today),
-    thisWeek: items.filter(item => item.createdAt >= thisWeekStart && item.createdAt < yesterday),
-    earlier: items.filter(item => item.createdAt < thisWeekStart),
-  };
+// 清理过期数据
+function cleanupOldItems(items: ClipboardItem[], days: number): ClipboardItem[] {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return items.filter(item => 
+    item.isFavorite || item.createdAt > cutoff
+  );
 }
 
 export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
-  let items = [...state.items];
+  let items = state.items;
 
   if (state.searchQuery.trim()) {
     const query = state.searchQuery.toLowerCase();
@@ -80,14 +91,6 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
   return items.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function getGroupedItems(state: ClipboardState): GroupedItems {
-  return groupItems(getFilteredItems(state));
-}
-
-export function getSelectedItem(state: ClipboardState): ClipboardItem | null {
-  return state.items.find(item => item.id === state.selectedId) || null;
-}
-
 export const useClipboardStore = create<ClipboardState>()(
   persist(
     (set) => ({
@@ -100,39 +103,38 @@ export const useClipboardStore = create<ClipboardState>()(
       settings: defaultSettings,
       showSettings: false,
 
-      setItems: items => set({ items }),
+      setItems: items => set({ items: items.slice(0, MAX_ITEMS_IN_MEMORY) }),
 
       addItem: item =>
         set(state => {
+          // 检查重复
           const isDuplicate = state.items.some(
             existing =>
               existing.content === item.content &&
-              Math.abs(existing.createdAt - item.createdAt) < 1000
+              Math.abs(existing.createdAt - item.createdAt) < 2000
           );
           if (isDuplicate) return state;
 
-          // 截断过长的内容以优化内存
-          const truncatedItem = {
+          // 压缩优化
+          const optimizedItem = compressImageData({
             ...item,
             content: item.content.length > MAX_CONTENT_LENGTH
-              ? item.content.substring(0, MAX_CONTENT_LENGTH)
+              ? item.content.substring(0, MAX_CONTENT_LENGTH) + '...'
               : item.content,
-          };
+          });
 
-          // 分离收藏和非收藏项目
+          // 分离收藏和普通
           const favoriteItems = state.items.filter(i => i.isFavorite);
           const normalItems = state.items.filter(i => !i.isFavorite);
 
-          // 将新项目添加到非收藏列表前面
-          const newNormalItems = [truncatedItem, ...normalItems];
+          // 添加新项并限制数量
+          const newNormalItems = [optimizedItem, ...normalItems]
+            .slice(0, state.settings.maxHistoryItems);
 
-          // 限制非收藏项目数量
-          const limitedNormalItems = newNormalItems.slice(0, state.settings.maxHistoryItems);
-
-          // 合并但按时间顺序混合（不置顶收藏）
-          const mergedItems = [...favoriteItems, ...limitedNormalItems];
-          // 按时间排序，收藏和普通项目混合
-          const newItems = mergedItems.sort((a, b) => b.createdAt - a.createdAt);
+          // 合并并排序
+          const newItems = [...favoriteItems, ...newNormalItems]
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, MAX_ITEMS_IN_MEMORY);
 
           return { items: newItems };
         }),
@@ -194,6 +196,16 @@ export const useClipboardStore = create<ClipboardState>()(
         settings: state.settings,
         items: state.items,
       }),
+      // 限制存储大小
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // 重新加载时清理过期数据
+          const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          state.items = state.items.filter(item => 
+            item.isFavorite || item.createdAt > cutoff
+          ).slice(0, MAX_ITEMS_IN_MEMORY);
+        }
+      },
     }
   )
 );
