@@ -48,14 +48,37 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: |
+          if [ -n "${{ matrix.target }}" ]; then
+            npm run tauri build -- --target ${{ matrix.target }}
+          else
+            npm run tauri build
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipjar-${{ matrix.platform }}-${{ matrix.target }}
+          path: src-tauri/target/release/bundle/**
+          retention-days: 5
+
+  release:
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          draft: false
+          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'ClipJar v__VERSION__'
-          releaseBody: |
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-          releaseDraft: false
-          prerelease: false
-          args: --target ${{ matrix.target }}
