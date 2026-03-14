@@ -50,20 +50,12 @@ function compressImageData(item: ClipboardItem): ClipboardItem {
     if (item.imagePath.length > MAX_IMAGE_SIZE) {
       return {
         ...item,
-        imagePath: null, // 大图不存入内存
+        imagePath: undefined, // 大图不存入内存
         content: '[图片 - 已压缩存储]',
       };
     }
   }
   return item;
-}
-
-// 清理过期数据
-function cleanupOldItems(items: ClipboardItem[], days: number): ClipboardItem[] {
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return items.filter(item => 
-    item.isFavorite || item.createdAt > cutoff
-  );
 }
 
 export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
@@ -90,6 +82,37 @@ export function getFilteredItems(state: ClipboardState): ClipboardItem[] {
   }
 
   return items.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+// 按时间分组
+export function getGroupedItems(state: ClipboardState): Record<string, ClipboardItem[]> {
+  const items = getFilteredItems(state);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const groups: Record<string, ClipboardItem[]> = {
+    today: [],
+    yesterday: [],
+    thisWeek: [],
+    earlier: [],
+  };
+
+  for (const item of items) {
+    const itemDate = new Date(item.createdAt);
+    if (itemDate >= today) {
+      groups.today.push(item);
+    } else if (itemDate >= yesterday) {
+      groups.yesterday.push(item);
+    } else if (itemDate >= weekAgo) {
+      groups.thisWeek.push(item);
+    } else {
+      groups.earlier.push(item);
+    }
+  }
+
+  return groups;
 }
 
 export const useClipboardStore = create<ClipboardState>()(

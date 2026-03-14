@@ -169,7 +169,7 @@ export default function App() {
 
   // 键盘导航
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
       if (editingNoteId !== null) return;
 
       if (e.key === 'ArrowDown') {
@@ -184,7 +184,7 @@ export default function App() {
       } else if (e.key === 'Escape') {
         setSelectedIndex(-1);
         setSearch('');
-        getCurrentWindow().then(w => w.hide());
+        (await getCurrentWindow()).hide();
       }
     };
 

@@ -29,6 +29,7 @@ const typeConfig = {
   [ContentType.CODE]: { icon: Code, color: 'text-purple-500', bg: 'bg-purple-50', label: '代码' },
   [ContentType.IMAGE]: { icon: Image, color: 'text-green-500', bg: 'bg-green-50', label: '图片' },
   [ContentType.TEXT]: { icon: FileText, color: 'text-surface-400', bg: 'bg-surface-100', label: '文本' },
+  [ContentType.FILE]: { icon: FileText, color: 'text-orange-500', bg: 'bg-orange-50', label: '文件' },
 };
 
 interface ItemRowProps {
