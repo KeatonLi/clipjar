@@ -157,9 +157,9 @@ export const ClipboardItem = memo(function ClipboardItem({ item }: ClipboardItem
                 <span className="text-xs text-neutral-400">来自 {item.sourceApp}</span>
               </>
             )}
-            {item.useCount > 0 && (
+            {item.useWeight > 0 && (
               <span className="text-xs text-primary-500 bg-primary-50 px-1.5 py-0.5 rounded">
-                使用 {item.useCount} 次
+                使用 {item.useWeight} 次
               </span>
             )}
             {item.isFavorite && (

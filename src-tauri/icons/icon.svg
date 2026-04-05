@@ -1,30 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <!-- 渐变背景 -->
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#0ea5e9;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0284c7;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="clipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f0f9ff;stop-opacity:1" />
     </linearGradient>
   </defs>
 
-  <!-- 圆形背景 -->
+  <!-- 背景圆 -->
   <circle cx="512" cy="512" r="480" fill="url(#bgGrad)"/>
 
-  <!-- 罐子主体 -->
-  <path d="M300 280 L300 700 Q300 760 360 760 L660 760 Q720 760 720 700 L720 280 Q720 240 680 240 L340 240 Q300 240 300 280 Z" fill="#f8fafc"/>
+  <!-- 剪贴板主体 -->
+  <rect x="256" y="220" width="512" height="620" rx="48" fill="url(#clipGrad)"/>
 
-  <!-- 罐子顶部卡扣 -->
-  <rect x="380" y="180" width="260" height="80" rx="16" fill="#e2e8f0"/>
-  <rect x="400" y="200" width="220" height="40" rx="8" fill="url(#bgGrad)"/>
+  <!-- 顶部把手 -->
+  <rect x="380" y="160" width="264" height="100" rx="24" fill="#bae6fd"/>
+  <rect x="400" y="180" width="224" height="50" rx="12" fill="url(#bgGrad)"/>
 
-  <!-- 罐子内的渐变色块（代表剪贴内容） -->
-  <rect x="340" y="400" width="340" height="280" rx="24" fill="url(#bgGrad)" opacity="0.9"/>
+  <!-- 剪贴板内容区域 -->
+  <rect x="300" y="360" width="424" height="420" rx="32" fill="white" stroke="#e0f2fe" stroke-width="4"/>
 
-  <!-- 剪贴内容线条 -->
-  <rect x="370" y="440" width="280" height="24" rx="12" fill="white" opacity="0.6"/>
-  <rect x="370" y="490" width="200" height="24" rx="12" fill="white" opacity="0.4"/>
-  <rect x="370" y="540" width="240" height="24" rx="12" fill="white" opacity="0.3"/>
+  <!-- 内容线条 -->
+  <rect x="340" y="420" width="260" height="36" rx="18" fill="#0ea5e9" opacity="0.15"/>
+  <rect x="340" y="480" width="180" height="32" rx="16" fill="#0ea5e9" opacity="0.10"/>
+  <rect x="340" y="530" width="220" height="32" rx="16" fill="#0ea5e9" opacity="0.08"/>
+  <rect x="340" y="580" width="160" height="32" rx="16" fill="#0ea5e9" opacity="0.06"/>
+  <rect x="340" y="630" width="200" height="32" rx="16" fill="#0ea5e9" opacity="0.05"/>
 
-  <!-- 罐子高光 -->
-  <path d="M320 300 Q320 300 340 300 L335 680 Q320 680 320 660 Z" fill="white" opacity="0.25"/>
+  <!-- 勾选标记 -->
+  <circle cx="680" cy="440" r="40" fill="#10b981"/>
+  <path d="M658 440 L672 454 L702 424" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- 高光效果 -->
+  <rect x="280" y="240" width="70" height="560" rx="24" fill="white" opacity="0.35"/>
 </svg>

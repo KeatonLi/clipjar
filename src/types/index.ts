@@ -13,11 +13,13 @@ export interface ClipboardItem {
   content: string;
   contentType: ContentType;
   imagePath?: string;
+  imageWidth?: number;      // 图片宽度
+  imageHeight?: number;     // 图片高度
   sourceApp?: string;
   createdAt: number;
   updatedAt: number;
   isFavorite: boolean;
-  useCount: number;
+  useWeight: number;
   tags: string[];
   note?: string; // 备注
 }
