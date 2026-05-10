@@ -7,7 +7,7 @@ import {
   AlertTriangle, HardDrive, RefreshCw
 } from 'lucide-react';
 import type { ShortcutMode } from '../../hooks/useGlobalShortcut';
-import { STORAGE_KEYS } from '../../utils/constants';
+import { STORAGE_KEYS, APP_CONFIG, SHORTCUT_PRESETS } from '../../utils/constants';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -55,7 +55,7 @@ function Toggle({ enabled, onToggle }: ToggleProps) {
     <button
       onClick={onToggle}
       className={`w-11 h-6 rounded-full transition-all duration-200 relative ${
-        enabled ? 'bg-sky-500' : 'bg-neutral-300'
+        enabled ? 'bg-blue-500' : 'bg-slate-300'
       }`}
     >
       <div
@@ -130,7 +130,7 @@ export function SettingsModal ({
       const res = await fetch('https://api.github.com/repos/KeatonLi/clipjar/releases/latest');
       const data = await res.json();
       const latestVersion = data.tag_name?.replace('v', '') || '0.0.0';
-      const currentVersion = '1.0.6';
+      const currentVersion = APP_CONFIG.VERSION;
 
       const hasUpdate = latestVersion.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
 
@@ -168,16 +168,16 @@ export function SettingsModal ({
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-blue-100/30 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-sky-100 rounded-xl">
-              <Settings className="w-4 h-4 text-sky-600" />
+            <div className="p-2 bg-blue-100 rounded-xl">
+              <Settings className="w-4 h-4 text-blue-600" />
             </div>
-            <h3 className="font-display font-bold text-base text-neutral-800">设置</h3>
+            <h3 className="font-display font-bold text-base text-slate-800">设置</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -186,13 +186,13 @@ export function SettingsModal ({
         {/* Content */}
         <div className="p-4 overflow-y-auto max-h-[70vh]">
           {/* Memory stats */}
-          <div className="p-4 rounded-xl bg-sky-50 border border-sky-100 mb-4">
+          <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100/50 mb-4">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-white rounded-xl shadow-sm">
-                <HardDrive className="w-5 h-5 text-sky-500" />
+                <HardDrive className="w-5 h-5 text-blue-500" />
               </div>
               <div>
-                <div className="text-xs text-sky-600 mb-0.5">存储统计</div>
+                <div className="text-xs text-blue-600 mb-0.5">存储统计</div>
                 <div className="text-sm font-semibold text-neutral-700">
                   {memoryInfo ? (
                     <span>前端 {itemCount} 条 · 后端 {memoryInfo.itemCount} 条</span>
@@ -232,54 +232,54 @@ export function SettingsModal ({
               <Toggle enabled={alwaysOnTop} onToggle={toggleAlwaysOnTop} />
             </SettingRow>
 
-            <div className="h-px bg-neutral-100 my-2" />
+            <div className="h-px bg-blue-100/50 my-2" />
 
             <div className="py-3">
               <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-violet-50 rounded-xl">
-                  <Keyboard className="w-4 h-4 text-violet-500" />
+                <div className="p-2 bg-blue-50 rounded-xl">
+                  <Keyboard className="w-4 h-4 text-blue-500" />
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-neutral-700">唤起快捷键</div>
-                  <div className="text-xs text-neutral-400">按下快捷键组合</div>
+                  <div className="text-xs text-neutral-400">双击快捷键唤起窗口</div>
                 </div>
               </div>
-              <input
-                type="text"
-                readOnly
-                value={shortcutMode}
-                onKeyDown={(e) => {
-                  e.preventDefault();
-                  const keys: string[] = [];
-                  if (e.ctrlKey) keys.push('Ctrl');
-                  if (e.altKey) keys.push('Alt');
-                  if (e.shiftKey) keys.push('Shift');
-                  if (e.metaKey) keys.push('Cmd');
-
-                  if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-                    keys.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
-                  }
-
-                  if (keys.length >= 2) {
-                    const newShortcut = keys.join('+');
-                    onShortcutChange(newShortcut);
-                    localStorage.setItem(STORAGE_KEYS.SHORTCUT_MODE, newShortcut);
-                  }
-                }}
-                className="w-full px-3 py-2.5 text-sm bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none focus:border-violet-400 text-center font-semibold text-neutral-700 transition-colors cursor-pointer hover:bg-neutral-100"
-              />
+              <div className="flex flex-col gap-2">
+                {SHORTCUT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    onClick={() => {
+                      onShortcutChange(preset.value);
+                      localStorage.setItem(STORAGE_KEYS.SHORTCUT_MODE, preset.value);
+                    }}
+                    className={`w-full px-3 py-2.5 text-sm rounded-xl border transition-all text-left flex items-center justify-between ${
+                      shortcutMode === preset.value
+                        ? 'bg-blue-100 border-blue-300 text-blue-700'
+                        : 'bg-blue-50/50 border-blue-200/50 text-slate-600 hover:bg-blue-100/50'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold">{preset.label}</div>
+                      <div className="text-xs text-slate-400">{preset.description}</div>
+                    </div>
+                    {shortcutMode === preset.value && (
+                      <div className="w-2.5 h-2.5 bg-blue-500 rounded-full" />
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="h-px bg-neutral-100 my-2" />
+            <div className="h-px bg-blue-100/50 my-2" />
 
             <div className="py-3">
               <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-emerald-50 rounded-xl">
-                  <Save className="w-4 h-4 text-emerald-500" />
+                <div className="p-2 bg-blue-50 rounded-xl">
+                  <Save className="w-4 h-4 text-blue-500" />
                 </div>
                 <div>
-                  <div className="text-sm font-semibold text-neutral-700">最大记录数</div>
-                  <div className="text-xs text-neutral-400">非收藏记录上限</div>
+                  <div className="text-sm font-semibold text-slate-700">最大记录数</div>
+                  <div className="text-xs text-slate-400">非收藏记录上限</div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -292,36 +292,36 @@ export function SettingsModal ({
                     const value = parseInt(e.target.value) || 100;
                     setSettings({ maxHistoryItems: Math.min(500, Math.max(10, value)) });
                   }}
-                  className="w-24 px-3 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none focus:border-emerald-400 text-center font-semibold text-neutral-700 transition-colors"
+                  className="w-24 px-3 py-2 text-sm bg-blue-50/50 border border-blue-200/50 rounded-xl focus:outline-none focus:border-blue-400 text-center font-semibold text-slate-700 transition-colors"
                 />
-                <span className="text-sm text-neutral-500">条</span>
+                <span className="text-sm text-slate-500">条</span>
               </div>
             </div>
 
-            <div className="h-px bg-neutral-100 my-2" />
+            <div className="h-px bg-blue-100/50 my-2" />
 
             <button
-              className="w-full flex items-center justify-between py-3 rounded-xl hover:bg-purple-50/50 transition-colors"
+              className="w-full flex items-center justify-between py-3 rounded-xl hover:bg-blue-50/50 transition-colors"
               onClick={checkUpdate}
               disabled={checking}
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-50 rounded-xl">
+                <div className="p-2 bg-blue-50 rounded-xl">
                   {checking ? (
-                    <RefreshCw className="w-4 h-4 text-purple-500 animate-spin" />
+                    <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
                   ) : (
-                    <Download className="w-4 h-4 text-purple-500" />
+                    <Download className="w-4 h-4 text-blue-500" />
                   )}
                 </div>
                 <div>
-                  <div className="text-sm font-semibold text-neutral-700">检查更新</div>
-                  <div className="text-xs text-neutral-400">{checking ? '检查中...' : '获取最新版本'}</div>
+                  <div className="text-sm font-semibold text-slate-700">检查更新</div>
+                  <div className="text-xs text-slate-400">{checking ? '检查中...' : '获取最新版本'}</div>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-purple-600 bg-purple-50 px-3 py-1 rounded-lg">v1.0.6</span>
+              <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">v{APP_CONFIG.VERSION}</span>
             </button>
 
-            <div className="h-px bg-neutral-100 my-2" />
+            <div className="h-px bg-blue-100/50 my-2" />
 
             <button
               className={`w-full flex items-center justify-between py-3 rounded-xl transition-colors ${
@@ -338,10 +338,10 @@ export function SettingsModal ({
                   )}
                 </div>
                 <div>
-                  <div className={`text-sm font-semibold ${showConfirmClear ? 'text-red-600' : 'text-neutral-700'}`}>
+                  <div className={`text-sm font-semibold ${showConfirmClear ? 'text-red-600' : 'text-slate-700'}`}>
                     {showConfirmClear ? '确认清空？' : '清空记录'}
                   </div>
-                  <div className="text-xs text-neutral-400">
+                  <div className="text-xs text-slate-400">
                     {showConfirmClear ? '再次点击确认删除' : '删除所有历史'}
                   </div>
                 </div>
@@ -354,8 +354,8 @@ export function SettingsModal ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 bg-neutral-50 border-t border-neutral-100 text-center">
-          <span className="text-xs text-neutral-400">ClipJar v1.0.6</span>
+        <div className="px-5 py-3 bg-blue-50/50 border-t border-blue-100/30 text-center">
+          <span className="text-xs text-blue-400/70">ClipJar v{APP_CONFIG.VERSION}</span>
         </div>
       </div>
     </div>

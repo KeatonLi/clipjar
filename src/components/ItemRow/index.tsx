@@ -8,7 +8,7 @@ import { formatTime, truncate } from '../../utils';
 const TypeBadge = memo(({ type }: { type: ContentType }) => {
   if (type === ContentType.LINK) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 text-xs font-medium">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 text-blue-600 text-xs font-semibold border border-blue-100/60">
         <Link className="w-3 h-3" />
         链接
       </span>
@@ -16,7 +16,7 @@ const TypeBadge = memo(({ type }: { type: ContentType }) => {
   }
   if (type === ContentType.CODE) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-50 text-violet-600 text-xs font-medium">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-semibold border border-indigo-100/60">
         <Code className="w-3 h-3" />
         代码
       </span>
@@ -24,14 +24,14 @@ const TypeBadge = memo(({ type }: { type: ContentType }) => {
   }
   if (type === ContentType.IMAGE) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-medium">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-600 text-xs font-semibold border border-emerald-100/60">
         <ImageIcon className="w-3 h-3" />
         图片
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-neutral-100 text-neutral-600 text-xs font-medium">
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold border border-slate-200/60">
       <FileText className="w-3 h-3" />
       文本
     </span>
@@ -75,10 +75,10 @@ export const ItemRow = memo(function ItemRow({
 
   return (
     <div
-      className={`group relative flex flex-col p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${
+      className={`group relative flex flex-col p-4 rounded-2xl transition-all duration-200 cursor-pointer glass card-hover ${
         isSelected
-          ? 'bg-sky-50 border-sky-300 shadow-md shadow-sky-100'
-          : 'bg-white border-neutral-200 hover:border-sky-200 hover:shadow-lg'
+          ? 'border-2 border-blue-400 shadow-blue bg-white/95'
+          : 'border border-white/60 shadow-sm bg-white/70 hover:bg-white/90'
       }`}
       onDoubleClick={handleCopy}
     >
@@ -91,28 +91,28 @@ export const ItemRow = memo(function ItemRow({
               <img
                 src={item.imagePath}
                 alt="剪贴板图片"
-                className="max-w-full h-auto rounded-xl border border-neutral-200"
+                className="max-w-full h-auto rounded-xl border border-slate-200/50 shadow-sm"
                 style={{ maxHeight: '120px', objectFit: 'contain' }}
                 loading="lazy"
               />
             </div>
           ) : (
-            <p className="text-sm text-neutral-700 leading-relaxed line-clamp-3">
+            <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">
               {truncate(item.content)}
             </p>
           )}
         </div>
 
         {/* Action buttons */}
-        <div className={`flex items-center gap-1 shrink-0 transition-opacity ${
+        <div className={`flex items-center gap-1 shrink-0 transition-all duration-200 ${
           isSelected || isCopied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         }`}>
           <button
             onClick={handleToggleFavorite}
             className={`p-2 rounded-xl transition-all ${
               item.isFavorite
-                ? 'text-amber-500 bg-amber-50'
-                : 'text-neutral-400 hover:text-amber-500 hover:bg-amber-50'
+                ? 'text-amber-500 bg-amber-50 shadow-sm'
+                : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'
             }`}
             title={item.isFavorite ? '取消收藏' : '收藏'}
           >
@@ -122,8 +122,8 @@ export const ItemRow = memo(function ItemRow({
             onClick={handleCopy}
             className={`p-2 rounded-xl transition-all ${
               isCopied
-                ? 'text-emerald-500 bg-emerald-50'
-                : 'text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50'
+                ? 'text-emerald-500 bg-emerald-50 shadow-sm'
+                : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-50'
             }`}
             title="复制"
           >
@@ -131,7 +131,7 @@ export const ItemRow = memo(function ItemRow({
           </button>
           <button
             onClick={handleDelete}
-            className="p-2 rounded-xl text-neutral-400 hover:text-red-500 hover:bg-red-50 transition-all"
+            className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
             title="删除"
           >
             <Trash2 className="w-4 h-4" />
@@ -140,18 +140,18 @@ export const ItemRow = memo(function ItemRow({
       </div>
 
       {/* Bottom meta row */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-neutral-100">
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100/60">
         <div className="flex items-center gap-2">
           <TypeBadge type={item.contentType} />
-          <span className="text-xs text-neutral-400">{formatTime(item.createdAt)}</span>
+          <span className="text-xs text-slate-400">{formatTime(item.createdAt)}</span>
         </div>
 
         {item.isFavorite && (
           <div
-            className="flex items-center gap-1 text-xs text-amber-600 cursor-pointer hover:text-amber-700"
+            className="flex items-center gap-1 text-xs cursor-pointer group/note"
             onClick={handleStartEdit}
           >
-            <span className="bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">
+            <span className="bg-gradient-to-r from-amber-50 to-orange-50 px-3 py-1.5 rounded-xl border border-amber-100/60 text-amber-600 group-hover/note:bg-gradient-to-r group-hover/note:from-amber-100 group-hover/note:to-orange-100 transition-all font-medium">
               {item.note || '+ 添加备注'}
             </span>
           </div>
@@ -160,13 +160,13 @@ export const ItemRow = memo(function ItemRow({
 
       {/* Note editing */}
       {isEditingNote && item.isFavorite && (
-        <div className="mt-3 pt-3 border-t border-neutral-100 animate-fade-in">
+        <div className="mt-3 pt-3 border-t border-slate-100/60 animate-fade-in">
           <div className="flex items-start gap-2">
             <textarea
               value={noteContent}
               onChange={(e) => setNoteContent(e.target.value)}
               placeholder="添加备注..."
-              className="flex-1 text-sm bg-sky-50 border border-sky-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition-all"
+              className="flex-1 text-sm bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-blue-300 focus:ring-3 focus:ring-blue-100/50 transition-all"
               rows={2}
               autoFocus
               maxLength={200}
@@ -174,13 +174,13 @@ export const ItemRow = memo(function ItemRow({
             <div className="flex flex-col gap-1">
               <button
                 onClick={handleSaveNote}
-                className="p-2 rounded-xl text-emerald-600 hover:bg-emerald-50 transition-colors"
+                className="p-2 rounded-xl text-emerald-500 hover:bg-emerald-50 transition-colors"
               >
                 <Check className="w-4 h-4" />
               </button>
               <button
                 onClick={onCancelEdit}
-                className="p-2 rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors"
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>

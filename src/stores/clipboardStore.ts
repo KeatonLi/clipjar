@@ -40,6 +40,7 @@ interface ClipboardState {
   clearAll: () => void;
   cleanupOldItems: () => void;
   getMemoryUsage: () => number;
+  debugMemory: () => { totalItems: number; textItems: number; imageItems: number; textSizeBytes: number; imageSizeBytes: number; estimatedMemoryMB: number };
 }
 
 /** 计算项目的内存占用估计值 */
@@ -271,6 +272,55 @@ export const useClipboardStore = create<ClipboardState>()(
         const totalBytes = state.items.reduce((sum, item) => sum + estimateItemSize(item), 0);
         return totalBytes / (1024 * 1024);
       },
+
+      /** 调试：打印详细内存使用统计 */
+      debugMemory: () => {
+        const state = get();
+        const textItems = state.items.filter(i => !i.imagePath);
+        const imageItems = state.items.filter(i => !!i.imagePath);
+
+        let textSize = 0;
+        textItems.forEach(item => {
+          textSize += item.content.length * 2;
+        });
+
+        let imageSize = 0;
+        let largeImages = 0;
+        imageItems.forEach(item => {
+          if (item.imagePath) {
+            const size = getBase64Size(item.imagePath);
+            imageSize += size;
+            if (size > 500 * 1024) {
+              largeImages++;
+            }
+          }
+        });
+
+        console.group('📊 ClipJar 内存统计');
+        console.log(`总条目: ${state.items.length}`);
+        console.log(`- 文本条目: ${textItems.length} (${(textSize / 1024).toFixed(2)} KB)`);
+        console.log(`- 图片条目: ${imageItems.length} (${(imageSize / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`- 大图片 (>500KB): ${largeImages}`);
+        console.log(`估计总内存: ${(state.items.reduce((sum, i) => sum + estimateItemSize(i), 0) / 1024 / 1024).toFixed(2)} MB`);
+        console.groupEnd();
+
+        // 检查 localStorage 大小
+        try {
+          const storageSize = new Blob([JSON.stringify(localStorage.getItem('clipjar-storage'))]).size;
+          console.log(`localStorage 大小: ${(storageSize / 1024).toFixed(2)} KB`);
+        } catch {
+          // ignore
+        }
+
+        return {
+          totalItems: state.items.length,
+          textItems: textItems.length,
+          imageItems: imageItems.length,
+          textSizeBytes: textSize,
+          imageSizeBytes: imageSize,
+          estimatedMemoryMB: state.items.reduce((sum, i) => sum + estimateItemSize(i), 0) / 1024 / 1024,
+        };
+      },
     }),
     {
       name: 'clipjar-storage',
@@ -304,9 +354,23 @@ export const useClipboardStore = create<ClipboardState>()(
   )
 );
 
-// 定期清理
+// 定期清理 - 仅在页面可见时执行
 if (typeof window !== 'undefined') {
+  // 检查页面是否可见
+  const isPageVisible = () => {
+    return document.visibilityState === 'visible';
+  };
+
   setInterval(() => {
-    useClipboardStore.getState().cleanupOldItems();
+    if (isPageVisible()) {
+      useClipboardStore.getState().cleanupOldItems();
+    }
   }, MEMORY_CONFIG.CLEANUP_INTERVAL_MS);
+
+  // 页面可见性变化时立即清理
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      useClipboardStore.getState().cleanupOldItems();
+    }
+  });
 }

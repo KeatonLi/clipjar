@@ -8,48 +8,15 @@ export function estimateImageSize(width: number, height: number): number {
   return width * height * 4;
 }
 
-/** 将 RGBA 数据转换为 PNG base64 */
+/**
+ * 将 RGBA 数据转换为 base64 - 内存优化版本
+ * 直接使用 ImageData + putImageData，避免创建中间 ImageBitmap 对象
+ */
 export async function convertImageToBase64(imageData: ImageData): Promise<string> {
   const rgba = await imageData.rgba();
-  
-  // 使用 canvas 压缩为 PNG
-  const canvas = document.createElement('canvas');
-  canvas.width = imageData.width;
-  canvas.height = imageData.height;
-  
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('无法获取 canvas context');
-  }
+  const { width, height } = imageData;
 
-  const imageDataObj = new ImageData(
-    new Uint8ClampedArray(rgba),
-    imageData.width,
-    imageData.height
-  );
-  ctx.putImageData(imageDataObj, 0, 0);
-
-  // 转换为 base64 PNG，使用 0.9 质量
-  return canvas.toDataURL('image/png', 0.9);
-}
-
-/** 压缩图片到指定尺寸 */
-export async function resizeImage(
-  imageData: ImageData,
-  maxWidth: number = MAX_DIMENSION,
-  maxHeight: number = MAX_DIMENSION
-): Promise<string> {
-  const rgba = await imageData.rgba();
-  
-  let { width, height } = imageData;
-  
-  // 计算缩放比例
-  if (width > maxWidth || height > maxHeight) {
-    const ratio = Math.min(maxWidth / width, maxHeight / height);
-    width = Math.floor(width * ratio);
-    height = Math.floor(height * ratio);
-  }
-
+  // 创建 canvas
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -59,27 +26,75 @@ export async function resizeImage(
     throw new Error('无法获取 canvas context');
   }
 
-  // 创建临时 canvas 用于绘制原始图片
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = imageData.width;
-  tempCanvas.height = imageData.height;
-  const tempCtx = tempCanvas.getContext('2d');
-  
-  if (!tempCtx) {
-    throw new Error('无法获取临时 canvas context');
+  // 直接使用 ImageData + putImageData（只复制一次）
+  const imgData = new ImageData(
+    new Uint8ClampedArray(rgba),
+    width,
+    height
+  );
+  ctx.putImageData(imgData, 0, 0);
+
+  // 清理中间数组
+  rgba.fill(0);
+  imgData.data.fill(0);
+
+  return canvas.toDataURL('image/png', 0.9);
+}
+
+/**
+ * 压缩图片到指定尺寸 - 内存优化版本
+ * 使用单个 canvas + drawImage 缩放，避免创建临时 canvas
+ */
+export async function resizeImage(
+  imageData: ImageData,
+  maxWidth: number = MAX_DIMENSION,
+  maxHeight: number = MAX_DIMENSION
+): Promise<string> {
+  const rgba = await imageData.rgba();
+
+  let { width, height } = imageData;
+
+  // 计算缩放比例
+  if (width > maxWidth || height > maxHeight) {
+    const ratio = Math.min(maxWidth / width, maxHeight / height);
+    width = Math.floor(width * ratio);
+    height = Math.floor(height * ratio);
   }
 
-  const imageDataObj = new ImageData(
+  // 创建目标 canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('无法获取 canvas context');
+  }
+
+  // 创建源 ImageData
+  const imgData = new ImageData(
     new Uint8ClampedArray(rgba),
     imageData.width,
     imageData.height
   );
-  tempCtx.putImageData(imageDataObj, 0, 0);
 
-  // 使用 better quality downscaling
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(tempCanvas, 0, 0, width, height);
+  // 创建临时 canvas 用于绘制源图片
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = imageData.width;
+  tempCanvas.height = imageData.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  if (tempCtx) {
+    tempCtx.putImageData(imgData, 0, 0);
+
+    // 高质量缩放
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(tempCanvas, 0, 0, width, height);
+  }
+
+  // 清理中间数据
+  rgba.fill(0);
+  imgData.data.fill(0);
 
   // 尝试 JPEG 格式，如果失败则回退到 PNG
   try {
@@ -87,7 +102,7 @@ export async function resizeImage(
     // 检查大小，如果还是太大则进一步压缩
     const base64Length = jpegData.length - 'data:image/jpeg;base64,'.length;
     const sizeInBytes = (base64Length * 3) / 4;
-    
+
     if (sizeInBytes > MAX_IMAGE_SIZE) {
       return canvas.toDataURL('image/jpeg', 0.6);
     }

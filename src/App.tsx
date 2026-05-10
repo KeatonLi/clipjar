@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
 import { type ClipboardItem, ContentType, type ImageData } from './types';
 import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
@@ -14,30 +14,52 @@ import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/Settings';
 import { ItemRow } from './components/ItemRow';
 
+// 图片大小限制
+const MAX_IMAGE_PIXELS = 4096 * 4096;
+const MAX_BASE64_SIZE = 5 * 1024 * 1024;
+
 const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI__?: unknown }).__TAURI__;
 
 export default function App() {
-  const { items, addItem, deleteItem, toggleFavorite, updateNote, clearAll, settings, setSettings } = useClipboardStore();
+  const {
+    items,
+    addItem,
+    deleteItem,
+    toggleFavorite,
+    updateNote,
+    clearAll,
+    settings,
+    setSettings
+  } = useClipboardStore();
+
+  // UI State
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'all' | 'fav'>('all');
   const [showSettings, setShowSettings] = useState(false);
   const [shortcutMode, setShortcutMode] = useState<ShortcutMode>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_KEYS.SHORTCUT_MODE) || 'Ctrl+Shift+V';
-    }
-    return 'Ctrl+Shift+V';
+    return localStorage.getItem(STORAGE_KEYS.SHORTCUT_MODE) || 'CommandOrControl+Shift+V';
   });
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
+  // Refs for clipboard monitoring
   const lastContentRef = useRef('');
   const lastImageRef = useRef('');
   const isProcessingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Search debounce
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Visibility tracking for performance
+  const isVisibleRef = useRef(true);
 
   useGlobalShortcut(shortcutMode);
 
+  // Sync to backend
   const syncToBackend = useCallback(async (item: ClipboardItem) => {
     if (!isTauri) return;
     try {
@@ -46,27 +68,40 @@ export default function App() {
         contentType: item.contentType,
       });
     } catch (err) {
-      console.error('同步到后端失败:', err);
+      console.warn('[ClipJar] 后端同步失败:', err);
     }
   }, []);
 
+  // Cleanup function for clipboard polling
+  const cleanupClipboardPolling = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
+  // Clipboard polling effect
   useEffect(() => {
     if (!isTauri) return;
 
-    let mounted = true;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const checkClipboard = async () => {
-      if (!mounted || isProcessingRef.current) return;
+      if (!isVisibleRef.current || isProcessingRef.current) return;
+
+      // Check abort signal
+      if (abortControllerRef.current?.signal.aborted) return;
+
       isProcessingRef.current = true;
 
       try {
+        // Read text
         const text = await readText();
-        if (text && text.trim() && text !== lastContentRef.current) {
+        if (text?.trim() && text !== lastContentRef.current) {
           lastContentRef.current = text;
 
           const newItem: ClipboardItem = {
-            id: Date.now(),
+            id: Date.now() + Math.random(),
             content: text.slice(0, APP_CONFIG.MAX_CONTENT_LENGTH),
             contentType: detectContentType(text),
             createdAt: Date.now(),
@@ -80,9 +115,18 @@ export default function App() {
           syncToBackend(newItem);
         }
 
+        // Read image
         try {
           const imageData = await readImage() as unknown as ImageData;
           if (imageData?.width && imageData?.height) {
+            const pixelCount = imageData.width * imageData.height;
+
+            // Skip oversized images
+            if (pixelCount > MAX_IMAGE_PIXELS) {
+              lastImageRef.current = `${imageData.width}x${imageData.height}`;
+              return;
+            }
+
             const imageKey = `${imageData.width}x${imageData.height}`;
             if (imageKey !== lastImageRef.current) {
               lastImageRef.current = imageKey;
@@ -91,13 +135,17 @@ export default function App() {
               let base64: string;
 
               if (estimatedSize > 1024 * 1024) {
-                base64 = await resizeImage(imageData, 800, 600);
+                base64 = await resizeImage(imageData, APP_CONFIG.IMAGE_MAX_WIDTH, APP_CONFIG.IMAGE_MAX_HEIGHT);
               } else {
                 base64 = await convertImageToBase64(imageData);
               }
 
+              if (base64.length > MAX_BASE64_SIZE) {
+                return;
+              }
+
               const newItem: ClipboardItem = {
-                id: Date.now(),
+                id: Date.now() + Math.random(),
                 content: `[图片 ${imageData.width}x${imageData.height}]`,
                 contentType: ContentType.IMAGE,
                 imagePath: base64,
@@ -115,26 +163,57 @@ export default function App() {
             }
           }
         } catch {
-          // no image
+          // No image in clipboard
         }
       } catch (err) {
-        // silent fail
+        console.warn('[ClipJar] 读取剪贴板失败:', err);
       } finally {
         isProcessingRef.current = false;
       }
     };
 
+    // Initial read
     checkClipboard();
+
+    // Set up polling
     intervalId = setInterval(checkClipboard, APP_CONFIG.CLIPBOARD_POLL_INTERVAL);
 
     return () => {
-      mounted = false;
+      cleanupClipboardPolling();
       if (intervalId) {
         clearInterval(intervalId);
       }
     };
-  }, [addItem, syncToBackend]);
+  }, [addItem, syncToBackend, cleanupClipboardPolling]);
 
+  // Visibility change handler
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = document.visibilityState === 'visible';
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // Search debounce effect
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, APP_CONFIG.SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [search]);
+
+  // Copy handler
   const handleCopy = useCallback(async (item: ClipboardItem) => {
     if (!isTauri) return;
 
@@ -146,17 +225,18 @@ export default function App() {
         lastContentRef.current = item.content;
       }
 
-      const window = getCurrentWindow();
-      await window.hide();
+      const currentWindow = getCurrentWindow();
+      await currentWindow.hide();
 
       setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), APP_CONFIG.COPY_SUCCESS_DURATION);
     } catch (err) {
-      console.error('复制失败:', err);
+      console.error('[ClipJar] 复制失败:', err);
     }
   }, []);
 
-  const saveNote = useCallback((id: number) => {
+  // Note save handler
+  const handleSaveNote = useCallback((id: number) => {
     const trimmed = noteContent.trim();
     if (trimmed.length <= 200) {
       updateNote(id, trimmed);
@@ -165,21 +245,26 @@ export default function App() {
     setNoteContent('');
   }, [noteContent, updateNote]);
 
-  const filteredItems = (() => {
+  // Filtered items
+  const filteredItems = useMemo(() => {
     let result = items;
-    if (search) {
-      const query = search.toLowerCase();
+
+    if (debouncedSearch) {
+      const query = debouncedSearch.toLowerCase();
       result = result.filter(item =>
         item.content.toLowerCase().includes(query) ||
         (item.note && item.note.toLowerCase().includes(query))
       );
     }
+
     if (tab === 'fav') {
       result = result.filter(i => i.isFavorite);
     }
-    return result.slice(0, APP_CONFIG.LIST_DISPLAY_LIMIT);
-  })();
 
+    return result.slice(0, APP_CONFIG.LIST_DISPLAY_LIMIT);
+  }, [items, debouncedSearch, tab]);
+
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (editingNoteId !== null) return;
@@ -210,45 +295,58 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filteredItems, selectedIndex, handleCopy, editingNoteId]);
 
+  // Reset selection when search/tab changes
   useEffect(() => {
     setSelectedIndex(-1);
   }, [search, tab]);
 
   return (
-    <div className="h-screen flex flex-col bg-sky-50 text-neutral-800 overflow-hidden font-sans">
+    <div className="h-screen flex flex-col text-slate-800 overflow-hidden font-sans relative">
+      {/* Decorative background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-blue-300/50 to-cyan-300/50 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-br from-sky-300/40 to-blue-300/40 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-blue-200/20 to-cyan-200/20 rounded-full blur-3xl" />
+      </div>
+
       {/* Header */}
-      <header className="px-5 py-4 bg-white border-b border-sky-100 shrink-0">
+      <header className="relative px-6 py-5 glass-dark border-b border-blue-100/30 shrink-0">
         {/* Logo & Search Row */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center shadow-md shadow-sky-200">
-              <Clipboard className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-500 flex items-center justify-center shadow-blue animate-float">
+              <Clipboard className="w-6 h-6 text-white" />
             </div>
-            <span className="font-display font-bold text-xl text-neutral-800">ClipJar</span>
+            <div className="flex flex-col">
+              <span className="font-display font-bold text-2xl gradient-text">ClipJar</span>
+              <span className="text-xs text-blue-500/70 font-medium">剪贴板管理器</span>
+            </div>
           </div>
 
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sky-400" />
-            <input
-              type="text"
-              placeholder="搜索剪贴内容..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-sky-50 border border-sky-200 rounded-xl pl-10 pr-10 py-2.5 text-sm text-neutral-700 placeholder:text-sky-400 focus:outline-none focus:bg-white focus:border-sky-400 focus:ring-3 focus:ring-sky-100 transition-all"
-            />
-            {search ? (
+          <div className="relative flex-1 max-w-lg mx-4">
+            <div className="relative flex items-center">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-400" />
+              <input
+                type="text"
+                placeholder="搜索剪贴内容..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-white/90 border border-blue-200/50 rounded-2xl pl-12 pr-12 py-3.5 text-sm text-slate-700 placeholder:text-blue-300/80 focus:outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-100/50 transition-all shadow-sm"
+              />
+            </div>
+            {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-sky-100 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-blue-100 hover:bg-blue-200 text-blue-500 transition-all"
               >
-                <X className="w-4 h-4 text-sky-400" />
+                <X className="w-4 h-4" />
               </button>
-            ) : null}
+            )}
           </div>
 
           <button
             onClick={() => setShowSettings(true)}
-            className="p-2.5 rounded-xl text-sky-400 hover:text-sky-600 hover:bg-sky-50 transition-all"
+            className="p-3 rounded-2xl glass text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all shadow-sm"
             title="设置"
           >
             <Settings className="w-5 h-5" />
@@ -256,35 +354,35 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-3 mt-4">
+        <div className="flex gap-3 mt-5">
           <button
             onClick={() => setTab('all')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${
               tab === 'all'
-                ? 'bg-sky-500 text-white shadow-md shadow-sky-200'
-                : 'text-sky-600 hover:text-sky-700 hover:bg-sky-100'
+                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-blue'
+                : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50/70'
             }`}
           >
             <Grid className="w-4 h-4" />
             全部
-            <span className={`px-2 py-0.5 text-xs rounded-lg ${
-              tab === 'all' ? 'bg-white/20' : 'bg-sky-100 text-sky-600'
+            <span className={`px-2 py-0.5 text-xs rounded-lg font-medium ${
+              tab === 'all' ? 'bg-white/25' : 'bg-blue-100 text-blue-600'
             }`}>
               {items.length}
             </span>
           </button>
           <button
             onClick={() => setTab('fav')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${
               tab === 'fav'
-                ? 'bg-amber-500 text-white shadow-md shadow-amber-200'
-                : 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
+                ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-[0_4px_14px_rgba(251,146,60,0.3)]'
+                : 'text-slate-500 hover:text-amber-600 hover:bg-amber-50/70'
             }`}
           >
             <Heart className="w-4 h-4" />
             收藏
-            <span className={`px-2 py-0.5 text-xs rounded-lg ${
-              tab === 'fav' ? 'bg-white/20' : 'bg-amber-100 text-amber-600'
+            <span className={`px-2 py-0.5 text-xs rounded-lg font-medium ${
+              tab === 'fav' ? 'bg-white/25' : 'bg-amber-100 text-amber-600'
             }`}>
               {items.filter(i => i.isFavorite).length}
             </span>
@@ -293,58 +391,78 @@ export default function App() {
       </header>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto min-h-0">
+      <main className="flex-1 overflow-y-auto min-h-0 relative">
         {filteredItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 animate-fade-in">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-sky-100 to-sky-200 flex items-center justify-center mb-5 shadow-inner">
-              {tab === 'fav' ? (
-                <Heart className="w-10 h-10 text-amber-500" />
-              ) : (
-                <Clipboard className="w-10 h-10 text-sky-400" />
-              )}
+          <div className="flex flex-col items-center justify-center h-full px-4 animate-scale-in">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-200 to-cyan-200 rounded-full blur-3xl opacity-40 animate-pulse-soft" />
+              <div className="relative w-28 h-28 rounded-full bg-gradient-to-br from-blue-100 via-sky-100 to-cyan-100 flex items-center justify-center shadow-blue border-4 border-white/50">
+                {tab === 'fav' ? (
+                  <Heart className="w-14 h-14 text-amber-400 animate-pulse-soft" />
+                ) : (
+                  <Clipboard className="w-14 h-14 text-blue-400" />
+                )}
+              </div>
             </div>
-            <p className="text-base font-semibold text-neutral-700">
+            <p className="text-xl font-semibold text-slate-700 mb-2">
               {tab === 'fav' ? '暂无收藏' : '暂无记录'}
             </p>
-            <p className="text-sm text-neutral-400 mt-1">
-              {tab === 'fav' ? '收藏重要内容方便快速访问' : `快捷键 ${shortcutMode} 唤起`}
+            <p className="text-sm text-slate-400 mb-6">
+              {tab === 'fav' ? '收藏重要内容方便快速访问' : `使用 ${shortcutMode} 唤起`}
             </p>
+            {tab === 'all' && (
+              <div className="px-5 py-3 rounded-2xl bg-blue-50/70 border border-blue-100/50 text-sm text-blue-500/80">
+                复制内容后自动保存到这里
+              </div>
+            )}
           </div>
         ) : (
-          <div className="p-4 space-y-3">
+          <div className="p-5 space-y-3 relative">
             {filteredItems.map((item, index) => (
-              <ItemRow
+              <div
                 key={item.id}
-                item={item}
-                isCopied={copiedId === item.id}
-                isSelected={selectedIndex === index}
-                onCopy={handleCopy}
-                onDelete={deleteItem}
-                onToggleFavorite={toggleFavorite}
-                isEditingNote={editingNoteId === item.id}
-                noteContent={noteContent}
-                setNoteContent={setNoteContent}
-                onStartEdit={(id, note) => { setEditingNoteId(id); setNoteContent(note || ''); }}
-                onSaveNote={saveNote}
-                onCancelEdit={() => { setEditingNoteId(null); setNoteContent(''); }}
-              />
+                className="animate-slide-up"
+                style={{ animationDelay: `${index * 30}ms` }}
+              >
+                <ItemRow
+                  item={item}
+                  isCopied={copiedId === item.id}
+                  isSelected={selectedIndex === index}
+                  onCopy={handleCopy}
+                  onDelete={deleteItem}
+                  onToggleFavorite={toggleFavorite}
+                  isEditingNote={editingNoteId === item.id}
+                  noteContent={noteContent}
+                  setNoteContent={setNoteContent}
+                  onStartEdit={(id, note) => { setEditingNoteId(id); setNoteContent(note || ''); }}
+                  onSaveNote={handleSaveNote}
+                  onCancelEdit={() => { setEditingNoteId(null); setNoteContent(''); }}
+                />
+              </div>
             ))}
           </div>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="px-5 py-3 bg-white border-t border-sky-100 flex justify-between items-center shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="text-xs text-neutral-500">{items.length} 条记录</span>
+      <footer className="relative px-6 py-4 glass-dark border-t border-blue-100/30 flex justify-between items-center shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center">
+            <span className="absolute inset-0 bg-emerald-400 rounded-full animate-ping opacity-75" />
+            <span className="relative w-2.5 h-2.5 bg-emerald-500 rounded-full" />
+          </div>
+          <span className="text-xs text-slate-500 font-medium">{items.length} 条记录</span>
         </div>
-        <span className="text-xs text-neutral-400">
-          {tab === 'fav' ? '收藏永久保存' : '双击复制'}
-        </span>
+        <div className="flex items-center gap-4 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <kbd className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 font-mono text-xs border border-slate-200">↑↓</kbd>
+            选择
+          </span>
+          <span className="flex items-center gap-1.5">
+            <kbd className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 font-mono text-xs border border-slate-200">Enter</kbd>
+            复制
+          </span>
+        </div>
       </footer>
 
       {showSettings && (
