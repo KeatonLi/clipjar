@@ -6,7 +6,7 @@ import { detectContentType } from './utils';
 import { convertImageToBase64, resizeImage, estimateImageSize } from './utils/image';
 import { APP_CONFIG, STORAGE_KEYS } from './utils/constants';
 import {
-  Search, X, Settings, Grid, Heart, Clipboard
+  Search, X, Settings, Star, Clipboard
 } from 'lucide-react';
 import { readText, readImage, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -36,6 +36,7 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'all' | 'fav'>('all');
   const [showSettings, setShowSettings] = useState(false);
+  const closeSettings = useCallback(() => setShowSettings(false), []);
   const [shortcutMode, setShortcutMode] = useState<ShortcutMode>(() => {
     return localStorage.getItem(STORAGE_KEYS.SHORTCUT_MODE) || 'CommandOrControl+Shift+V';
   });
@@ -267,16 +268,26 @@ export default function App() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (editingNoteId !== null) return;
+      if (editingNoteId !== null || showSettings || e.isComposing) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('textarea, [contenteditable="true"]')) return;
+      if (e.key === 'Enter' && target.closest('button')) return;
+      const selectRow = (index: number) => {
+        if (!filteredItems.length) return;
+        setSelectedIndex(index);
+        if (target.closest('.clipboard-row')) {
+          document.querySelectorAll<HTMLButtonElement>('.clip-content-button')[index]?.focus();
+        }
+      };
 
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          setSelectedIndex(prev => Math.min(prev + 1, filteredItems.length - 1));
+          selectRow(Math.min(selectedIndex + 1, filteredItems.length - 1));
           break;
         case 'ArrowUp':
           e.preventDefault();
-          setSelectedIndex(prev => Math.max(prev - 1, 0));
+          selectRow(Math.max(selectedIndex - 1, 0));
           break;
         case 'Enter':
           if (selectedIndex >= 0 && filteredItems[selectedIndex]) {
@@ -293,141 +304,85 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredItems, selectedIndex, handleCopy, editingNoteId]);
+  }, [filteredItems, selectedIndex, handleCopy, editingNoteId, showSettings]);
 
   // Reset selection when search/tab changes
   useEffect(() => {
     setSelectedIndex(-1);
   }, [search, tab]);
 
+  useEffect(() => {
+    setSelectedIndex(index => Math.min(index, filteredItems.length - 1));
+  }, [filteredItems.length]);
+
   return (
-    <div className="h-screen flex flex-col text-slate-800 overflow-hidden font-sans relative">
-      {/* Decorative background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-blue-300/50 to-cyan-300/50 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-br from-sky-300/40 to-blue-300/40 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-blue-200/20 to-cyan-200/20 rounded-full blur-3xl" />
-      </div>
-
-      {/* Header */}
-      <header className="relative px-6 py-5 glass-dark border-b border-blue-100/30 shrink-0">
-        {/* Logo & Search Row */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-500 flex items-center justify-center shadow-blue animate-float">
-              <Clipboard className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-display font-bold text-2xl gradient-text">ClipJar</span>
-              <span className="text-xs text-blue-500/70 font-medium">剪贴板管理器</span>
-            </div>
+    <div className="clipjar-shell">
+      <header className="app-header">
+        <div className="brand-row">
+          <div className="brand">
+            <span className="brand-mark"><Clipboard size={17} strokeWidth={1.8} /></span>
+            <span className="brand-name">ClipJar</span>
+            <span className="brand-caption">随手复制，随时找回</span>
           </div>
-
-          <div className="relative flex-1 max-w-lg mx-4">
-            <div className="relative flex items-center">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-400" />
-              <input
-                type="text"
-                placeholder="搜索剪贴内容..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-white/90 border border-blue-200/50 rounded-2xl pl-12 pr-12 py-3.5 text-sm text-slate-700 placeholder:text-blue-300/80 focus:outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-100/50 transition-all shadow-sm"
-              />
-            </div>
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-blue-100 hover:bg-blue-200 text-blue-500 transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
           <button
+            type="button"
             onClick={() => setShowSettings(true)}
-            className="p-3 rounded-2xl glass text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all shadow-sm"
+            className="icon-button"
+            aria-label="打开设置"
             title="设置"
           >
-            <Settings className="w-5 h-5" />
+            <Settings size={18} strokeWidth={1.7} />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-3 mt-5">
-          <button
-            onClick={() => setTab('all')}
-            className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${
-              tab === 'all'
-                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-blue'
-                : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50/70'
-            }`}
-          >
-            <Grid className="w-4 h-4" />
-            全部
-            <span className={`px-2 py-0.5 text-xs rounded-lg font-medium ${
-              tab === 'all' ? 'bg-white/25' : 'bg-blue-100 text-blue-600'
-            }`}>
-              {items.length}
-            </span>
-          </button>
-          <button
-            onClick={() => setTab('fav')}
-            className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${
-              tab === 'fav'
-                ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-[0_4px_14px_rgba(251,146,60,0.3)]'
-                : 'text-slate-500 hover:text-amber-600 hover:bg-amber-50/70'
-            }`}
-          >
-            <Heart className="w-4 h-4" />
-            收藏
-            <span className={`px-2 py-0.5 text-xs rounded-lg font-medium ${
-              tab === 'fav' ? 'bg-white/25' : 'bg-amber-100 text-amber-600'
-            }`}>
-              {items.filter(i => i.isFavorite).length}
-            </span>
-          </button>
+        <div className="search-field">
+          <Search size={18} strokeWidth={1.7} aria-hidden="true" />
+          <input
+            type="search"
+            aria-label="搜索剪贴内容或备注"
+            placeholder="搜索内容或备注…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} className="icon-button search-clear" aria-label="清除搜索">
+              <X size={15} />
+            </button>
+          )}
         </div>
+
+        <nav className="filter-row" aria-label="剪贴记录筛选">
+          <div className="filter-tabs">
+            <button type="button" onClick={() => setTab('all')} className={`filter-tab ${tab === 'all' ? 'is-active' : ''}`} aria-pressed={tab === 'all'}>
+              全部<span className="tab-count">{items.length}</span>
+            </button>
+            <button type="button" onClick={() => setTab('fav')} className={`filter-tab ${tab === 'fav' ? 'is-active' : ''}`} aria-pressed={tab === 'fav'}>
+              <Star size={14} strokeWidth={1.8} />收藏<span className="tab-count">{items.filter(i => i.isFavorite).length}</span>
+            </button>
+          </div>
+          <span className="filter-caption">{search ? `${filteredItems.length} 条匹配` : '最近复制'}</span>
+        </nav>
       </header>
 
-      {/* Content */}
-      <main className="flex-1 overflow-y-auto min-h-0 relative">
+      <main className="clipboard-content" aria-label={tab === 'fav' ? '收藏记录' : '剪贴记录'}>
         {filteredItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 animate-scale-in">
-            <div className="relative mb-8">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-200 to-cyan-200 rounded-full blur-3xl opacity-40 animate-pulse-soft" />
-              <div className="relative w-28 h-28 rounded-full bg-gradient-to-br from-blue-100 via-sky-100 to-cyan-100 flex items-center justify-center shadow-blue border-4 border-white/50">
-                {tab === 'fav' ? (
-                  <Heart className="w-14 h-14 text-amber-400 animate-pulse-soft" />
-                ) : (
-                  <Clipboard className="w-14 h-14 text-blue-400" />
-                )}
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-slate-700 mb-2">
-              {tab === 'fav' ? '暂无收藏' : '暂无记录'}
-            </p>
-            <p className="text-sm text-slate-400 mb-6">
-              {tab === 'fav' ? '收藏重要内容方便快速访问' : `使用 ${shortcutMode} 唤起`}
-            </p>
-            {tab === 'all' && (
-              <div className="px-5 py-3 rounded-2xl bg-blue-50/70 border border-blue-100/50 text-sm text-blue-500/80">
-                复制内容后自动保存到这里
-              </div>
-            )}
+          <div className="empty-state" role="status">
+            <span className="empty-symbol">
+              {search ? <Search size={28} strokeWidth={1.3} /> : tab === 'fav' ? <Star size={28} strokeWidth={1.3} /> : <Clipboard size={28} strokeWidth={1.3} />}
+            </span>
+            <h1>{search ? '没有找到匹配内容' : tab === 'fav' ? '把常用内容留在这里' : '从一次复制开始'}</h1>
+            <p>{search ? '试试其他关键词，或清除搜索。' : tab === 'fav' ? '点击记录旁的星标，下次就能快速找到。' : '复制文字、链接或图片，记录会出现在这里。'}</p>
+            {search && <button type="button" className="quiet-button" onClick={() => setSearch('')}>清除搜索</button>}
           </div>
         ) : (
-          <div className="p-5 space-y-3 relative">
+          <ul className="clipboard-list">
             {filteredItems.map((item, index) => (
-              <div
-                key={item.id}
-                className="animate-slide-up"
-                style={{ animationDelay: `${index * 30}ms` }}
-              >
+              <li key={item.id}>
                 <ItemRow
                   item={item}
                   isCopied={copiedId === item.id}
                   isSelected={selectedIndex === index}
+                  onSelect={() => setSelectedIndex(index)}
                   onCopy={handleCopy}
                   onDelete={deleteItem}
                   onToggleFavorite={toggleFavorite}
@@ -438,36 +393,23 @@ export default function App() {
                   onSaveNote={handleSaveNote}
                   onCancelEdit={() => { setEditingNoteId(null); setNoteContent(''); }}
                 />
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="relative px-6 py-4 glass-dark border-t border-blue-100/30 flex justify-between items-center shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="relative flex items-center">
-            <span className="absolute inset-0 bg-emerald-400 rounded-full animate-ping opacity-75" />
-            <span className="relative w-2.5 h-2.5 bg-emerald-500 rounded-full" />
-          </div>
-          <span className="text-xs text-slate-500 font-medium">{items.length} 条记录</span>
-        </div>
-        <div className="flex items-center gap-4 text-xs text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <kbd className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 font-mono text-xs border border-slate-200">↑↓</kbd>
-            选择
-          </span>
-          <span className="flex items-center gap-1.5">
-            <kbd className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 font-mono text-xs border border-slate-200">Enter</kbd>
-            复制
-          </span>
+      <footer className="app-footer">
+        <span>{items.length} 条记录</span>
+        <div className="keyboard-hints">
+          <span><kbd>↑↓</kbd> 选择</span>
+          <span><kbd>↵</kbd> 复制</span>
         </div>
       </footer>
 
       {showSettings && (
         <SettingsModal
-          onClose={() => setShowSettings(false)}
+          onClose={closeSettings}
           onClearAll={clearAll}
           itemCount={items.length}
           shortcutMode={shortcutMode}

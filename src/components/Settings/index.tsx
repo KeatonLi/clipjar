@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { invoke } from '@tauri-apps/api/core';
@@ -48,14 +48,18 @@ function SettingRow({ icon, iconBg, iconColor, title, description, children }: S
 interface ToggleProps {
   enabled: boolean;
   onToggle: () => void;
+  label: string;
 }
 
-function Toggle({ enabled, onToggle }: ToggleProps) {
+function Toggle({ enabled, onToggle, label }: ToggleProps) {
   return (
     <button
       onClick={onToggle}
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
       className={`w-11 h-6 rounded-full transition-all duration-200 relative ${
-        enabled ? 'bg-blue-500' : 'bg-slate-300'
+        enabled ? 'bg-[#5377a7]' : 'bg-slate-300'
       }`}
     >
       <div
@@ -76,6 +80,37 @@ export function SettingsModal ({
   settings,
   setSettings
 }: SettingsModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key !== 'Tab') return;
+      const controls = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
+      if (!controls?.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === dialogRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || active === dialogRef.current)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
+
   const [startup, setStartup] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -160,23 +195,29 @@ export function SettingsModal ({
 
   return (
     <div
-      className="fixed inset-0 bg-neutral-900/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+      className="fixed inset-0 bg-slate-900/20 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-80 max-h-[85vh] overflow-hidden animate-slide-up border border-neutral-200"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        tabIndex={-1}
+        className="settings-panel bg-white rounded-xl shadow-xl overflow-hidden border border-neutral-200"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-blue-100/30 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-100 rounded-xl">
-              <Settings className="w-4 h-4 text-blue-600" />
+            <div className="p-2 bg-slate-100 rounded-lg">
+              <Settings className="w-4 h-4 text-[#5377a7]" />
             </div>
-            <h3 className="font-display font-bold text-base text-slate-800">设置</h3>
+            <h3 id="settings-title" className="font-semibold text-base text-slate-800">设置</h3>
           </div>
           <button
             onClick={onClose}
+            aria-label="关闭设置"
             className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
@@ -184,25 +225,25 @@ export function SettingsModal ({
         </div>
 
         {/* Content */}
-        <div className="p-4 overflow-y-auto max-h-[70vh]">
+        <div className="settings-content px-5 py-3">
           {/* Memory stats */}
-          <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100/50 mb-4">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 mb-4">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-white rounded-xl shadow-sm">
-                <HardDrive className="w-5 h-5 text-blue-500" />
+                <HardDrive className="w-5 h-5 text-[#5377a7]" />
               </div>
               <div>
-                <div className="text-xs text-blue-600 mb-0.5">存储统计</div>
+                <div className="text-xs text-[#5377a7] mb-0.5">存储统计</div>
                 <div className="text-sm font-semibold text-neutral-700">
                   {memoryInfo ? (
-                    <span>前端 {itemCount} 条 · 后端 {memoryInfo.itemCount} 条</span>
+                    <span>{itemCount} 条剪贴记录</span>
                   ) : (
                     <span className="text-neutral-400">加载中...</span>
                   )}
                 </div>
                 {memoryInfo && (
                   <div className="text-xs text-neutral-400 mt-0.5">
-                    内存占用 ~{memoryInfo.memoryMB.toFixed(1)} MB
+                    内存占用约 {memoryInfo.memoryMB.toFixed(1)} MB
                   </div>
                 )}
               </div>
@@ -212,32 +253,32 @@ export function SettingsModal ({
           <div className="space-y-1">
             <SettingRow
               icon={<Power className="w-4 h-4" />}
-              iconBg="bg-blue-50"
-              iconColor="text-blue-500"
+              iconBg="bg-slate-50"
+              iconColor="text-[#5377a7]"
               title="开机自启"
               description="登录时自动运行"
             >
-              <Toggle enabled={startup} onToggle={toggleStartup} />
+              <Toggle label="开机自启" enabled={startup} onToggle={toggleStartup} />
             </SettingRow>
 
             <div className="h-px bg-neutral-100 my-2" />
 
             <SettingRow
               icon={<Pin className="w-4 h-4" />}
-              iconBg="bg-cyan-50"
-              iconColor="text-cyan-500"
+              iconBg="bg-slate-100"
+              iconColor="text-slate-500"
               title="窗口置顶"
               description="保持在最前面"
             >
-              <Toggle enabled={alwaysOnTop} onToggle={toggleAlwaysOnTop} />
+              <Toggle label="窗口置顶" enabled={alwaysOnTop} onToggle={toggleAlwaysOnTop} />
             </SettingRow>
 
-            <div className="h-px bg-blue-100/50 my-2" />
+            <div className="h-px bg-slate-100 my-2" />
 
             <div className="py-3">
               <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-blue-50 rounded-xl">
-                  <Keyboard className="w-4 h-4 text-blue-500" />
+                <div className="p-2 bg-slate-50 rounded-xl">
+                  <Keyboard className="w-4 h-4 text-[#5377a7]" />
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-neutral-700">唤起快捷键</div>
@@ -248,14 +289,15 @@ export function SettingsModal ({
                 {SHORTCUT_PRESETS.map((preset) => (
                   <button
                     key={preset.value}
+                    aria-pressed={shortcutMode === preset.value}
                     onClick={() => {
                       onShortcutChange(preset.value);
                       localStorage.setItem(STORAGE_KEYS.SHORTCUT_MODE, preset.value);
                     }}
                     className={`w-full px-3 py-2.5 text-sm rounded-xl border transition-all text-left flex items-center justify-between ${
                       shortcutMode === preset.value
-                        ? 'bg-blue-100 border-blue-300 text-blue-700'
-                        : 'bg-blue-50/50 border-blue-200/50 text-slate-600 hover:bg-blue-100/50'
+                        ? 'bg-[#edf3fa] border-[#9bb0cc] text-[#395d8a]'
+                        : 'bg-slate-50/50 border-slate-200/50 text-slate-600 hover:bg-slate-100'
                     }`}
                   >
                     <div>
@@ -263,19 +305,19 @@ export function SettingsModal ({
                       <div className="text-xs text-slate-400">{preset.description}</div>
                     </div>
                     {shortcutMode === preset.value && (
-                      <div className="w-2.5 h-2.5 bg-blue-500 rounded-full" />
+                      <div className="w-2.5 h-2.5 bg-[#5377a7] rounded-full" />
                     )}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="h-px bg-blue-100/50 my-2" />
+            <div className="h-px bg-slate-100 my-2" />
 
             <div className="py-3">
               <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-blue-50 rounded-xl">
-                  <Save className="w-4 h-4 text-blue-500" />
+                <div className="p-2 bg-slate-50 rounded-xl">
+                  <Save className="w-4 h-4 text-[#5377a7]" />
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-slate-700">最大记录数</div>
@@ -285,6 +327,7 @@ export function SettingsModal ({
               <div className="flex items-center gap-3">
                 <input
                   type="number"
+                  aria-label="最大记录数"
                   min="10"
                   max="500"
                   value={settings.maxHistoryItems}
@@ -292,25 +335,25 @@ export function SettingsModal ({
                     const value = parseInt(e.target.value) || 100;
                     setSettings({ maxHistoryItems: Math.min(500, Math.max(10, value)) });
                   }}
-                  className="w-24 px-3 py-2 text-sm bg-blue-50/50 border border-blue-200/50 rounded-xl focus:outline-none focus:border-blue-400 text-center font-semibold text-slate-700 transition-colors"
+                  className="w-24 px-3 py-2 text-sm bg-slate-50/50 border border-slate-200/50 rounded-xl focus:outline-none focus:border-blue-400 text-center font-semibold text-slate-700 transition-colors"
                 />
                 <span className="text-sm text-slate-500">条</span>
               </div>
             </div>
 
-            <div className="h-px bg-blue-100/50 my-2" />
+            <div className="h-px bg-slate-100 my-2" />
 
             <button
-              className="w-full flex items-center justify-between py-3 rounded-xl hover:bg-blue-50/50 transition-colors"
+              className="w-full flex items-center justify-between py-3 rounded-xl hover:bg-slate-50/50 transition-colors"
               onClick={checkUpdate}
               disabled={checking}
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-xl">
+                <div className="p-2 bg-slate-50 rounded-xl">
                   {checking ? (
-                    <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+                    <RefreshCw className="w-4 h-4 text-[#5377a7] animate-spin" />
                   ) : (
-                    <Download className="w-4 h-4 text-blue-500" />
+                    <Download className="w-4 h-4 text-[#5377a7]" />
                   )}
                 </div>
                 <div>
@@ -318,10 +361,10 @@ export function SettingsModal ({
                   <div className="text-xs text-slate-400">{checking ? '检查中...' : '获取最新版本'}</div>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">v{APP_CONFIG.VERSION}</span>
+              <span className="text-sm font-semibold text-[#5377a7] bg-slate-50 px-3 py-1 rounded-lg">v{APP_CONFIG.VERSION}</span>
             </button>
 
-            <div className="h-px bg-blue-100/50 my-2" />
+            <div className="h-px bg-slate-100 my-2" />
 
             <button
               className={`w-full flex items-center justify-between py-3 rounded-xl transition-colors ${
@@ -354,8 +397,8 @@ export function SettingsModal ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 bg-blue-50/50 border-t border-blue-100/30 text-center">
-          <span className="text-xs text-blue-400/70">ClipJar v{APP_CONFIG.VERSION}</span>
+        <div className="px-5 py-3 bg-slate-50 border-t border-neutral-100 text-center shrink-0">
+          <span className="text-xs text-slate-500">ClipJar v{APP_CONFIG.VERSION}</span>
         </div>
       </div>
     </div>
