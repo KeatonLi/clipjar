@@ -1,0 +1,17 @@
+[package]
+name = "clipjar-native-history-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Exercise the production storage module without GTK/WebView system dependencies.
+[lib]
+path = "../../src-tauri/src/history.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

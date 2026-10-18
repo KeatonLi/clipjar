@@ -1,0 +1,123 @@
+name: Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Check and build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            binary: src-tauri/target/release/clipjar.exe
+            artifact: clipjar-trial-windows-x64
+          - os: macos-latest
+            binary: src-tauri/target/release/clipjar
+            artifact: clipjar-trial-macos-arm64
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            tests/native-history -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test frontend models and migration
+        # Node 24 expands the quoted glob on PowerShell and Bash.
+        run: node --experimental-strip-types --test "tests/*.test.ts"
+
+      - name: Test storage diagnostics
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Test native history
+        run: cargo test --manifest-path tests/native-history/Cargo.toml
+
+      - name: Build desktop executable and frontend
+        # beforeBuildCommand runs npm run build, including tsc and Vite.
+        run: npm run tauri build -- --no-bundle
+
+      - name: Upload desktop trial executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 7
+
+  visual:
+    name: Browser smoke test and screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install isolated Playwright
+        run: npm install --prefix "${{ runner.temp }}/clipjar-playwright" --no-save playwright@1.58.2
+
+      - name: Install Chromium
+        run: |
+          node "${{ runner.temp }}/clipjar-playwright/node_modules/playwright/cli.js" install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Run browser smoke test
+        env:
+          PLAYWRIGHT_MODULE_PATH: ${{ runner.temp }}/clipjar-playwright/node_modules/playwright
+        run: node scripts/ui-smoke.cjs
+
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipjar-ui-screenshots
+          path: artifacts/ui/**/*.png
+          if-no-files-found: warn
+          retention-days: 7

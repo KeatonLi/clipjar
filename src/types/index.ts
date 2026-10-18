@@ -22,7 +22,13 @@ export interface ClipboardItem {
   useWeight: number;
   tags: string[];
   note?: string; // 备注
+  title?: string;
+  isSnippet?: boolean;
+  // Native images stay in the application data directory, not WebView storage.
+  hasImage?: boolean;
 }
+
+export type ClipboardItemUpdates = Partial<Pick<ClipboardItem, 'title' | 'content' | 'contentType' | 'note' | 'isSnippet' | 'tags'>>;
 
 // 标签
 export interface Tag {
@@ -34,6 +40,32 @@ export interface Tag {
 
 // 筛选类型
 export type FilterType = ContentType | 'all' | 'favorite';
+export type LibraryTab = 'history' | 'favorites' | 'snippets';
+export type ContentFilter = ContentType | 'all';
+
+export interface StorageStats {
+  itemCount: number;
+  ordinaryCount: number;
+  snippetCount: number;
+  favoriteCount: number;
+  imageCount: number;
+  imageBytes: number;
+  metadataBytes: number;
+  totalBytes: number;
+  budgetBytes: number;
+  metadataBudgetBytes: number;
+  isPaused: boolean;
+  pausedUntil?: number | null;
+  lastError: string | null;
+}
+
+export interface ClipboardBootstrap {
+  revision: number;
+  items: ClipboardItem[];
+  settings: AppSettings;
+  stats: StorageStats;
+  migrationComplete: boolean;
+}
 
 // 应用设置
 export interface AppSettings {

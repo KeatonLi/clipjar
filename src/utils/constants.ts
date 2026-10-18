@@ -2,7 +2,7 @@
 
 export const APP_CONFIG = {
   // 版本 - 与 package.json 保持一致
-  VERSION: '1.0.6',
+  VERSION: '1.1.0',
   APP_NAME: 'ClipJar',
 
   // 剪贴板轮询间隔 (ms)
@@ -46,14 +46,14 @@ export const DEFAULT_SETTINGS = {
   maxHistoryItems: 100,
   autoCleanup: true,
   cleanupDays: 30,
-  globalShortcut: 'Win', // 双击 Win 唤起窗口
+  globalShortcut: 'CommandOrControl+Shift+V',
   startAtLogin: false,
   showPreview: true,
 } as const;
 
 /** 可选的快捷键模式 */
 export const SHORTCUT_PRESETS = [
-  { label: '双击 Win (推荐)', value: 'Win', description: '双击 Windows 键' },
-  { label: '双击 Option', value: 'Option', description: '双击 Mac Option 键' },
-  { label: 'Ctrl+Shift+V', value: 'CommandOrControl+Shift+V', description: '传统组合键' },
+  { label: 'Ctrl / ⌘ + Shift + V（推荐）', value: 'CommandOrControl+Shift+V', description: '快速打开 ClipJar' },
+  { label: 'Alt / Option + Space', value: 'Alt+Space', description: '使用组合键打开' },
+  { label: 'Ctrl / ⌘ + Alt + V', value: 'CommandOrControl+Alt+V', description: '备用快捷键' },
 ] as const;

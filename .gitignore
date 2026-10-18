@@ -64,3 +64,6 @@ coverage/
 *.tmp
 *.temp
 Thumbs.db
+__pycache__/
+
+artifacts/

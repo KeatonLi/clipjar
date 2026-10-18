@@ -1,405 +1,76 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { X, Power, Pin, Keyboard, Pause, Play, Trash2, HardDrive, ExternalLink } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { invoke } from '@tauri-apps/api/core';
-import {
-  X, Settings, Power, Pin, Keyboard, Save, Download, Trash,
-  AlertTriangle, HardDrive, RefreshCw
-} from 'lucide-react';
-import type { ShortcutMode } from '../../hooks/useGlobalShortcut';
-import { STORAGE_KEYS, APP_CONFIG, SHORTCUT_PRESETS } from '../../utils/constants';
+import { useClipboardStore } from '../../stores/clipboardStore';
+import { isNativeClipboard } from '../../lib/clipboardClient';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { APP_CONFIG, SHORTCUT_PRESETS } from '../../utils/constants';
 
-interface SettingsModalProps {
-  onClose: () => void;
-  onClearAll: () => void;
-  itemCount: number;
-  shortcutMode: ShortcutMode;
-  onShortcutChange: (mode: ShortcutMode) => void;
-  settings: { maxHistoryItems: number };
-  setSettings: (s: { maxHistoryItems: number }) => void;
+function Toggle({ enabled, label, disabled, onToggle }: { enabled: boolean; label: string; disabled?: boolean; onToggle: () => void }) {
+  return <button type="button" className={`setting-toggle ${enabled ? 'enabled' : ''}`} role="switch" aria-checked={enabled} aria-label={label} disabled={disabled} onClick={onToggle}><span /></button>;
 }
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-interface SettingRowProps {
-  icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}
-
-function SettingRow({ icon, iconBg, iconColor, title, description, children }: SettingRowProps) {
-  return (
-    <div className="flex items-center justify-between py-3">
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-xl ${iconBg}`}>
-          <span className={iconColor}>{icon}</span>
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-neutral-700">{title}</div>
-          <div className="text-xs text-neutral-400 mt-0.5">{description}</div>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-interface ToggleProps {
-  enabled: boolean;
-  onToggle: () => void;
-  label: string;
-}
-
-function Toggle({ enabled, onToggle, label }: ToggleProps) {
-  return (
-    <button
-      onClick={onToggle}
-      role="switch"
-      aria-checked={enabled}
-      aria-label={label}
-      className={`w-11 h-6 rounded-full transition-all duration-200 relative ${
-        enabled ? 'bg-[#5377a7]' : 'bg-slate-300'
-      }`}
-    >
-      <div
-        className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-200 ${
-          enabled ? 'left-5' : 'left-0.5'
-        }`}
-      />
-    </button>
-  );
-}
-
-export function SettingsModal ({
-  onClose,
-  onClearAll,
-  itemCount,
-  shortcutMode,
-  onShortcutChange,
-  settings,
-  setSettings
-}: SettingsModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-      if (event.key !== 'Tab') return;
-      const controls = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
-      if (!controls?.length) return;
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || active === dialogRef.current)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || active === dialogRef.current)) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
-    };
-  }, [onClose]);
-
-  const [startup, setStartup] = useState(false);
+export function SettingsModal({ onClose }: { onClose: () => void }) {
+  const { settings, stats, items, initialized, setSettings, clearAll, pauseCapture } = useClipboardStore();
+  const [startup, setStartup] = useState(settings.startAtLogin);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [memoryInfo, setMemoryInfo] = useState<{ itemCount: number; memoryMB: number } | null>(null);
-  const [showConfirmClear, setShowConfirmClear] = useState(false);
-
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const [limit, setLimit] = useState(String(settings.maxHistoryItems));
+  const [confirmClear, setConfirmClear] = useState(false);
+  const ref = useDialogFocus(onClose);
+  const native = isNativeClipboard();
+  const ordinaryCount = stats?.ordinaryCount ?? items.filter(item => !item.isFavorite && !item.isSnippet).length;
+  useEffect(() => { setLimit(String(settings.maxHistoryItems)); }, [settings.maxHistoryItems]);
   useEffect(() => {
-    const initSettings = async () => {
-      try {
-        const autoStartEnabled = await isEnabled();
-        setStartup(autoStartEnabled);
-
-        const window = getCurrentWindow();
-        const isOnTop = await window.isAlwaysOnTop();
-        setAlwaysOnTop(isOnTop);
-
-        const stats = await invoke<{ itemCount: number; memoryMB: number }>('get_memory_stats');
-        setMemoryInfo(stats);
-      } catch (err) {
-        console.error('初始化设置失败:', err);
-      }
-    };
-    initSettings();
-  }, []);
-
-  const toggleStartup = async () => {
-    try {
-      if (startup) {
-        await disable();
-      } else {
-        await enable();
-      }
-      setStartup(!startup);
-    } catch (err) {
-      console.error('切换自启失败:', err);
-    }
+    if (!native) return;
+    let cancelled = false;
+    Promise.all([isEnabled(), getCurrentWindow().isAlwaysOnTop()]).then(([enabled, onTop]) => {
+      if (!cancelled) { setStartup(enabled); setAlwaysOnTop(onTop); }
+    }).catch(error => { if (!cancelled) setLocalError(`无法读取窗口设置：${String(error)}`); });
+    return () => { cancelled = true; };
+  }, [native]);
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true); setLocalError('');
+    try { await action(); } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); }
   };
-
-  const toggleAlwaysOnTop = async () => {
-    try {
-      const window = getCurrentWindow();
-      await window.setAlwaysOnTop(!alwaysOnTop);
-      setAlwaysOnTop(!alwaysOnTop);
-    } catch (err) {
-      console.error('切换置顶失败:', err);
-    }
+  const saveLimit = async () => {
+    const value = Number(limit);
+    if (!Number.isInteger(value) || value < 10 || value > 500) throw new Error('请输入 10 到 500 之间的整数。');
+    await setSettings({ maxHistoryItems: value });
   };
-
-  const checkUpdate = useCallback(async () => {
-    setChecking(true);
-    try {
-      const res = await fetch('https://api.github.com/repos/KeatonLi/clipjar/releases/latest');
-      const data = await res.json();
-      const latestVersion = data.tag_name?.replace('v', '') || '0.0.0';
-      const currentVersion = APP_CONFIG.VERSION;
-
-      const hasUpdate = latestVersion.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
-
-      if (hasUpdate) {
-        if (confirm(`发现新版本 v${latestVersion}\n\n是否前往下载页面？`)) {
-          window.open('https://github.com/KeatonLi/clipjar/releases', '_blank');
-        }
-      } else {
-        alert(`当前已是最新版本 v${currentVersion}`);
-      }
-    } catch {
-      alert('检查更新失败，请稍后重试');
-    } finally {
-      setChecking(false);
-    }
-  }, []);
-
-  const handleClearConfirm = () => {
-    if (showConfirmClear) {
-      onClearAll();
-      setShowConfirmClear(false);
-    } else {
-      setShowConfirmClear(true);
-      setTimeout(() => setShowConfirmClear(false), 3000);
-    }
-  };
+  const currentPresetExists = SHORTCUT_PRESETS.some(preset => preset.value === settings.globalShortcut);
+  const storagePercent = stats ? Math.min(100, stats.totalBytes / stats.budgetBytes * 100) : 0;
 
   return (
-    <div
-      className="fixed inset-0 bg-slate-900/20 flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        tabIndex={-1}
-        className="settings-panel bg-white rounded-xl shadow-xl overflow-hidden border border-neutral-200"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-slate-100 rounded-lg">
-              <Settings className="w-4 h-4 text-[#5377a7]" />
-            </div>
-            <h3 id="settings-title" className="font-semibold text-base text-slate-800">设置</h3>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="关闭设置"
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <div className="dialog-backdrop" onClick={onClose}>
+      <div ref={ref} className="dialog-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-heading" tabIndex={-1} onClick={e => e.stopPropagation()}>
+        <header className="dialog-header"><h2 id="settings-heading">设置</h2><button type="button" className="icon-button" aria-label="关闭设置" onClick={onClose}><X size={18} /></button></header>
+        <div className="dialog-body settings-content">
+          {localError && <p className="inline-error" role="alert">{localError}</p>}
+          <section className="storage-summary" aria-label="本地存储占用">
+            <div className="storage-heading"><span><HardDrive size={15} />本地存储</span><strong>{stats ? megabytes(stats.totalBytes) : '读取中…'}</strong></div>
+            <progress value={storagePercent} max={100} aria-label="存储容量使用比例" />
+            <p>{stats ? `${stats.itemCount} 条内容 · 容量上限 ${megabytes(stats.budgetBytes)}` : '正在读取存储统计'}</p>
+          </section>
+          <section className="settings-section">
+            <h3>记录与保留</h3>
+            {native && <div className="setting-block"><div className="setting-title"><Pause size={16} /><span>{stats?.isPaused ? '后台记录已暂停' : '后台记录'}</span></div><p>{stats?.isPaused && stats.pausedUntil ? `将在 ${new Date(stats.pausedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 恢复` : '暂停期间的剪贴内容不会保存'}</p><div className="setting-button-row">{stats?.isPaused ? <button type="button" className="secondary-button" disabled={busy || !initialized} onClick={() => void run(() => pauseCapture(0))}><Play size={13} />恢复记录</button> : <><button type="button" className="secondary-button" disabled={busy || !initialized} onClick={() => void run(() => pauseCapture(15))}>暂停 15 分钟</button><button type="button" className="secondary-button" disabled={busy || !initialized} onClick={() => void run(() => pauseCapture(60))}>暂停 1 小时</button></>}</div></div>}
+            <div className="setting-block"><label htmlFor="history-limit" className="setting-title">普通历史上限</label><p>保留最近 10–500 条，收藏和片段单独保留</p><div className="setting-button-row"><input id="history-limit" type="number" min={10} max={500} className="text-field count-field" value={limit} onChange={e => setLimit(e.target.value)} disabled={busy || !initialized} /><span className="subtle-hint">条</span><button type="button" className="secondary-button" disabled={busy || !initialized || limit === String(settings.maxHistoryItems)} onClick={() => void run(saveLimit)}>应用</button></div></div>
+            <div className="setting-row"><div><span className="setting-title">自动清理旧历史</span><p>收藏和片段不会自动删除</p></div><Toggle label="自动清理旧历史" enabled={settings.autoCleanup} disabled={busy || !initialized} onToggle={() => void run(() => setSettings({ autoCleanup: !settings.autoCleanup }))} /></div>
+            {settings.autoCleanup && <div className="setting-row setting-days"><label htmlFor="cleanup-days">保留时间</label><select id="cleanup-days" className="select-field" value={settings.cleanupDays} disabled={busy || !initialized} onChange={e => void run(() => setSettings({ cleanupDays: Number(e.target.value) }))}>{![7, 30, 90, 365].includes(settings.cleanupDays) && <option value={settings.cleanupDays}>{settings.cleanupDays} 天</option>}<option value={7}>7 天</option><option value={30}>30 天</option><option value={90}>90 天</option><option value={365}>1 年</option></select></div>}
+          </section>
+          <section className="settings-section"><h3>快捷键与窗口</h3>
+            <div className="setting-block"><label htmlFor="global-shortcut" className="setting-title"><Keyboard size={16} />唤起快捷键</label><select id="global-shortcut" className="select-field shortcut-select" value={settings.globalShortcut} disabled={busy || !initialized} onChange={e => void run(() => setSettings({ globalShortcut: e.target.value }))}>{!currentPresetExists && <option value={settings.globalShortcut}>{settings.globalShortcut}（当前设置）</option>}{SHORTCUT_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</select><p>窗口隐藏时也能快速打开</p></div>
+            {native ? <><div className="setting-row"><div><span className="setting-title"><Power size={16} />开机自启</span><p>登录电脑时自动运行</p></div><Toggle label="开机自启" enabled={startup} disabled={busy || !initialized} onToggle={() => void run(async () => { if (startup) await disable(); else await enable(); setStartup(!startup); await setSettings({ startAtLogin: !startup }); })} /></div><div className="setting-row"><div><span className="setting-title"><Pin size={16} />窗口置顶</span><p>查找内容时保持在最前面</p></div><Toggle label="窗口置顶" enabled={alwaysOnTop} disabled={busy} onToggle={() => void run(async () => { await getCurrentWindow().setAlwaysOnTop(!alwaysOnTop); setAlwaysOnTop(!alwaysOnTop); })} /></div></> : <p className="subtle-hint">后台记录、全局快捷键和窗口设置在桌面应用中生效。</p>}
+          </section>
+          <section className="settings-section cleanup-section"><h3>整理空间</h3><p>清空普通历史，保留收藏和常用片段。</p>{confirmClear ? <div className="clear-confirm"><p>清空 {ordinaryCount} 条普通记录？</p><div className="setting-button-row"><button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmClear(false)}>取消</button><button type="button" className="danger-button" disabled={busy} onClick={() => void run(async () => { await clearAll(); setConfirmClear(false); })}>确认清空</button></div></div> : <button type="button" className="danger-button" disabled={busy || !initialized || ordinaryCount === 0} onClick={() => setConfirmClear(true)}><Trash2 size={14} />清空普通历史</button>}</section>
         </div>
-
-        {/* Content */}
-        <div className="settings-content px-5 py-3">
-          {/* Memory stats */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-white rounded-xl shadow-sm">
-                <HardDrive className="w-5 h-5 text-[#5377a7]" />
-              </div>
-              <div>
-                <div className="text-xs text-[#5377a7] mb-0.5">存储统计</div>
-                <div className="text-sm font-semibold text-neutral-700">
-                  {memoryInfo ? (
-                    <span>{itemCount} 条剪贴记录</span>
-                  ) : (
-                    <span className="text-neutral-400">加载中...</span>
-                  )}
-                </div>
-                {memoryInfo && (
-                  <div className="text-xs text-neutral-400 mt-0.5">
-                    内存占用约 {memoryInfo.memoryMB.toFixed(1)} MB
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <SettingRow
-              icon={<Power className="w-4 h-4" />}
-              iconBg="bg-slate-50"
-              iconColor="text-[#5377a7]"
-              title="开机自启"
-              description="登录时自动运行"
-            >
-              <Toggle label="开机自启" enabled={startup} onToggle={toggleStartup} />
-            </SettingRow>
-
-            <div className="h-px bg-neutral-100 my-2" />
-
-            <SettingRow
-              icon={<Pin className="w-4 h-4" />}
-              iconBg="bg-slate-100"
-              iconColor="text-slate-500"
-              title="窗口置顶"
-              description="保持在最前面"
-            >
-              <Toggle label="窗口置顶" enabled={alwaysOnTop} onToggle={toggleAlwaysOnTop} />
-            </SettingRow>
-
-            <div className="h-px bg-slate-100 my-2" />
-
-            <div className="py-3">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-slate-50 rounded-xl">
-                  <Keyboard className="w-4 h-4 text-[#5377a7]" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-neutral-700">唤起快捷键</div>
-                  <div className="text-xs text-neutral-400">双击快捷键唤起窗口</div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                {SHORTCUT_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    aria-pressed={shortcutMode === preset.value}
-                    onClick={() => {
-                      onShortcutChange(preset.value);
-                      localStorage.setItem(STORAGE_KEYS.SHORTCUT_MODE, preset.value);
-                    }}
-                    className={`w-full px-3 py-2.5 text-sm rounded-xl border transition-all text-left flex items-center justify-between ${
-                      shortcutMode === preset.value
-                        ? 'bg-[#edf3fa] border-[#9bb0cc] text-[#395d8a]'
-                        : 'bg-slate-50/50 border-slate-200/50 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div>
-                      <div className="font-semibold">{preset.label}</div>
-                      <div className="text-xs text-slate-400">{preset.description}</div>
-                    </div>
-                    {shortcutMode === preset.value && (
-                      <div className="w-2.5 h-2.5 bg-[#5377a7] rounded-full" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-px bg-slate-100 my-2" />
-
-            <div className="py-3">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-slate-50 rounded-xl">
-                  <Save className="w-4 h-4 text-[#5377a7]" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-700">最大记录数</div>
-                  <div className="text-xs text-slate-400">非收藏记录上限</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  aria-label="最大记录数"
-                  min="10"
-                  max="500"
-                  value={settings.maxHistoryItems}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value) || 100;
-                    setSettings({ maxHistoryItems: Math.min(500, Math.max(10, value)) });
-                  }}
-                  className="w-24 px-3 py-2 text-sm bg-slate-50/50 border border-slate-200/50 rounded-xl focus:outline-none focus:border-blue-400 text-center font-semibold text-slate-700 transition-colors"
-                />
-                <span className="text-sm text-slate-500">条</span>
-              </div>
-            </div>
-
-            <div className="h-px bg-slate-100 my-2" />
-
-            <button
-              className="w-full flex items-center justify-between py-3 rounded-xl hover:bg-slate-50/50 transition-colors"
-              onClick={checkUpdate}
-              disabled={checking}
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-50 rounded-xl">
-                  {checking ? (
-                    <RefreshCw className="w-4 h-4 text-[#5377a7] animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4 text-[#5377a7]" />
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-700">检查更新</div>
-                  <div className="text-xs text-slate-400">{checking ? '检查中...' : '获取最新版本'}</div>
-                </div>
-              </div>
-              <span className="text-sm font-semibold text-[#5377a7] bg-slate-50 px-3 py-1 rounded-lg">v{APP_CONFIG.VERSION}</span>
-            </button>
-
-            <div className="h-px bg-slate-100 my-2" />
-
-            <button
-              className={`w-full flex items-center justify-between py-3 rounded-xl transition-colors ${
-                showConfirmClear ? 'bg-red-50' : 'hover:bg-red-50/50'
-              }`}
-              onClick={handleClearConfirm}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-xl ${showConfirmClear ? 'bg-red-100' : 'bg-red-50'}`}>
-                  {showConfirmClear ? (
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
-                  ) : (
-                    <Trash className="w-4 h-4 text-red-500" />
-                  )}
-                </div>
-                <div>
-                  <div className={`text-sm font-semibold ${showConfirmClear ? 'text-red-600' : 'text-slate-700'}`}>
-                    {showConfirmClear ? '确认清空？' : '清空记录'}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {showConfirmClear ? '再次点击确认删除' : '删除所有历史'}
-                  </div>
-                </div>
-              </div>
-              {showConfirmClear && (
-                <span className="text-sm font-semibold text-red-500">确认</span>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 bg-slate-50 border-t border-neutral-100 text-center shrink-0">
-          <span className="text-xs text-slate-500">ClipJar v{APP_CONFIG.VERSION}</span>
-        </div>
+        <footer className="dialog-footer settings-footer"><span>ClipJar v{APP_CONFIG.VERSION}</span><button type="button" className="text-link" onClick={() => void run(async () => { if (native) await invoke('plugin:shell|open', { path: 'https://github.com/KeatonLi/clipjar/releases', with: null }); else window.open('https://github.com/KeatonLi/clipjar/releases', '_blank', 'noopener,noreferrer'); })}>查看更新<ExternalLink size={12} /></button></footer>
       </div>
     </div>
   );
