@@ -1,224 +1,148 @@
 #![windows_subsystem = "windows"]
 
 mod clipboard;
+mod history;
 
-
+use clipboard::SharedHistory;
+use history::{ClipboardItem, HistoryManager, ItemPatch, Settings, SettingsPatch, Snapshot, StorageStats};
+use std::sync::{Arc, Mutex};
 use tauri::{
-    Manager,
     menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
-    State,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager, State,
 };
 use tauri_plugin_autostart::MacosLauncher;
-use clipboard::{SharedClipboardManager, create_manager};
-use serde_json;
 
-/// 获取剪贴板历史记录
 #[tauri::command]
-fn get_clipboard_history(state: State<'_, SharedClipboardManager>) -> Vec<serde_json::Value> {
-    let manager = state.lock().unwrap();
-    manager.get_items()
-        .iter()
-        .map(|item| {
-            serde_json::json!({
-                "id": item.id,
-                "content": item.content,
-                "contentType": item.content_type,
-                "createdAt": item.created_at,
-                "isFavorite": item.is_favorite,
-                "tags": item.tags,
-            })
-        })
-        .collect()
+async fn get_clipboard_bootstrap(app_handle: AppHandle, state: State<'_, SharedHistory>, legacy_items: Option<Vec<serde_json::Value>>, legacy_settings: Option<Settings>) -> Result<Snapshot, String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.bootstrap(legacy_items.unwrap_or_default(), legacy_settings)).await
 }
 
-/// 添加剪贴板项目
 #[tauri::command]
-fn add_clipboard_item(
-    state: State<'_, SharedClipboardManager>,
-    content: String,
-    content_type: String,
-) -> Option<serde_json::Value> {
-    let mut manager = state.lock().unwrap();
-    manager.add_item(content, content_type)
-        .map(|item| {
-            serde_json::json!({
-                "id": item.id,
-                "content": item.content,
-                "contentType": item.content_type,
-                "createdAt": item.created_at,
-                "isFavorite": item.is_favorite,
-                "tags": item.tags,
-            })
-        })
+async fn get_clipboard_history(state: State<'_, SharedHistory>) -> Result<Vec<ClipboardItem>, String> {
+    clipboard::read(state.inner().clone(), |manager| Ok(manager.snapshot().items)).await
 }
 
-/// 删除剪贴板项目
 #[tauri::command]
-fn delete_clipboard_item(state: State<'_, SharedClipboardManager>, id: i64) -> Result<(), String> {
-    let mut manager = state.lock().unwrap();
-    if manager.delete_item(id) {
-        Ok(())
-    } else {
-        Err("项目不存在".to_string())
+async fn add_clipboard_item(app_handle: AppHandle, state: State<'_, SharedHistory>, content: String, content_type: Option<String>) -> Result<Option<ClipboardItem>, String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.add_text(content, content_type)).await
+}
+
+#[tauri::command]
+async fn create_snippet(app_handle: AppHandle, state: State<'_, SharedHistory>, title: String, content: String, content_type: Option<String>, note: Option<String>) -> Result<ClipboardItem, String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.create_snippet(title, content, content_type, note)).await
+}
+
+#[tauri::command]
+async fn update_clipboard_item(app_handle: AppHandle, state: State<'_, SharedHistory>, id: i64, updates: ItemPatch) -> Result<ClipboardItem, String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.update(id, updates)).await
+}
+
+#[tauri::command]
+async fn delete_clipboard_item(app_handle: AppHandle, state: State<'_, SharedHistory>, id: i64) -> Result<(), String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.delete(id)).await
+}
+
+#[tauri::command]
+async fn toggle_favorite(app_handle: AppHandle, state: State<'_, SharedHistory>, id: i64) -> Result<bool, String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.toggle_favorite(id)).await
+}
+
+#[tauri::command]
+async fn update_clipboard_settings(app_handle: AppHandle, state: State<'_, SharedHistory>, settings: SettingsPatch) -> Result<(), String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.update_settings(settings)).await
+}
+
+#[tauri::command]
+async fn clear_history(app_handle: AppHandle, state: State<'_, SharedHistory>, include_protected: Option<bool>) -> Result<(), String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.clear(include_protected.unwrap_or(false))).await
+}
+
+#[tauri::command]
+async fn pause_capture(app_handle: AppHandle, state: State<'_, SharedHistory>, duration_minutes: u32) -> Result<(), String> {
+    clipboard::mutate(app_handle, state.inner().clone(), move |manager| manager.pause(duration_minutes)).await
+}
+
+#[tauri::command]
+async fn get_storage_stats(state: State<'_, SharedHistory>) -> Result<StorageStats, String> {
+    clipboard::read(state.inner().clone(), |manager| Ok(manager.stats())).await
+}
+
+#[tauri::command]
+async fn get_image_data(state: State<'_, SharedHistory>, id: i64) -> Result<String, String> {
+    clipboard::read(state.inner().clone(), move |manager| manager.image_data(id)).await
+}
+
+#[tauri::command]
+async fn get_image_thumbnail(state: State<'_, SharedHistory>, id: i64) -> Result<String, String> {
+    clipboard::read(state.inner().clone(), move |manager| manager.image_thumbnail(id)).await
+}
+
+#[tauri::command]
+async fn copy_clipboard_item(app_handle: AppHandle, state: State<'_, SharedHistory>, id: i64) -> Result<(), String> {
+    clipboard::copy_item(app_handle, state.inner().clone(), id).await
+}
+
+#[tauri::command]
+async fn write_clipboard_text(app_handle: AppHandle, state: State<'_, SharedHistory>, text: String) -> Result<(), String> {
+    clipboard::write_text(app_handle, state.inner().clone(), text).await
+}
+
+#[tauri::command]
+async fn write_clipboard_image(app_handle: AppHandle, state: State<'_, SharedHistory>, image_data: Vec<u8>) -> Result<(), String> {
+    clipboard::write_image(app_handle, state.inner().clone(), image_data).await
+}
+
+fn show_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
     }
-}
-
-/// 切换收藏状态
-#[tauri::command]
-fn toggle_favorite(state: State<'_, SharedClipboardManager>, id: i64) -> Result<bool, String> {
-    let mut manager = state.lock().unwrap();
-    if manager.toggle_favorite(id) {
-        // 返回新的收藏状态
-        let is_fav = manager.get_items()
-            .iter()
-            .find(|i| i.id == id)
-            .map(|i| i.is_favorite)
-            .unwrap_or(false);
-        Ok(is_fav)
-    } else {
-        Err("项目不存在".to_string())
-    }
-}
-
-/// 更新使用次数
-#[tauri::command]
-fn update_use_count(_state: State<'_, SharedClipboardManager>, _id: i64) -> Result<(), String> {
-    // 使用次数统计可以在前端完成
-    Ok(())
-}
-
-/// 清空所有历史记录
-#[tauri::command]
-fn clear_history(state: State<'_, SharedClipboardManager>) -> Result<(), String> {
-    let mut manager = state.lock().unwrap();
-    manager.clear();
-    Ok(())
-}
-
-/// 获取内存使用统计
-#[tauri::command]
-fn get_memory_stats(state: State<'_, SharedClipboardManager>) -> serde_json::Value {
-    let manager = state.lock().unwrap();
-    let memory_bytes = manager.memory_usage();
-    
-    serde_json::json!({
-        "itemCount": manager.get_items().len(),
-        "memoryBytes": memory_bytes,
-        "memoryMB": (memory_bytes as f64 / 1024.0 / 1024.0).round() / 1000.0,
-    })
-}
-
-/// 写入剪贴板文本
-#[tauri::command]
-async fn write_clipboard_text(
-    app_handle: tauri::AppHandle,
-    text: String,
-) -> Result<(), String> {
-    clipboard::write_clipboard_text(app_handle, text).await
-}
-
-/// 写入剪贴板图片
-#[tauri::command]
-async fn write_clipboard_image(
-    _app_handle: tauri::AppHandle,
-    _image_data: Vec<u8>,
-) -> Result<(), String> {
-    // 图片写入功能暂时简化处理
-    // 在实际应用中，可能需要将图片转换为 tauri::image::Image 格式
-    Ok(())
 }
 
 fn main() {
-    // 创建共享的剪贴板管理器 - 限制最多 200 条
-    let clipboard_manager = create_manager(200);
-
     tauri::Builder::default()
-        .manage(clipboard_manager)
+        // A second launch focuses the running process, keeping one history writer.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_window(app)))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"].into())))
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            get_clipboard_history,
-            add_clipboard_item,
-            delete_clipboard_item,
-            toggle_favorite,
-            update_use_count,
-            clear_history,
-            get_memory_stats,
-            write_clipboard_text,
-            write_clipboard_image,
+            get_clipboard_bootstrap, get_clipboard_history, add_clipboard_item,
+            create_snippet, update_clipboard_item, delete_clipboard_item, toggle_favorite,
+            update_clipboard_settings, clear_history, pause_capture, get_storage_stats,
+            get_image_data, get_image_thumbnail, copy_clipboard_item, write_clipboard_text, write_clipboard_image,
         ])
         .setup(|app| {
-            // 创建系统托盘菜单
-            let show_item = MenuItem::with_id(app, "show", "显示 ClipJar", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let root = app.path().app_data_dir()?.join("history");
+            let manager = HistoryManager::open(root).map_err(std::io::Error::other)?;
+            let state = Arc::new(Mutex::new(manager));
+            app.manage(state.clone());
+            clipboard::start_polling(app.handle().clone(), state);
 
-            // 创建系统托盘
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
+            let show = MenuItem::with_id(app, "show", "显示 ClipJar", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let mut tray = TrayIconBuilder::new().menu(&menu).show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => show_window(app), "quit" => app.exit(0), _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    // 左键点击托盘图标 - 显示并聚焦窗口
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let window_clone = window.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                                let _ = window_clone.set_focus();
-                            });
-                        }
-                    }
-                })
-                .build(app)?;
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event { show_window(tray.app_handle()); }
+                });
+            if let Some(icon) = app.default_window_icon() { tray = tray.icon(icon.clone()); }
+            tray.build(app)?;
 
-            // 获取主窗口
             if let Some(window) = app.get_webview_window("main") {
-                // 阻止窗口关闭，改为隐藏到托盘
-                let window_clone = window.clone();
+                let closing_window = window.clone();
                 window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = window_clone.hide();
-                    }
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); let _ = closing_window.hide(); }
                 });
-
-                // 监听窗口显示事件，可以在这里进行内存优化
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(focused) = event {
-                        if !focused {
-                            // 窗口失去焦点时可以考虑清理一些资源
-                            // 但保持窗口打开，只是隐藏
-                        }
-                    }
-                });
+                if std::env::args().any(|arg| arg == "--minimized") { let _ = window.hide(); }
             }
-
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("error while running ClipJar");
 }

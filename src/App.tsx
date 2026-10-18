@@ -1,423 +1,165 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useClipboardStore } from './stores/clipboardStore';
-import { type ClipboardItem, ContentType, type ImageData } from './types';
-import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
-import { detectContentType } from './utils';
-import { convertImageToBase64, resizeImage, estimateImageSize } from './utils/image';
-import { APP_CONFIG, STORAGE_KEYS } from './utils/constants';
-import {
-  Search, X, Settings, Star, Clipboard
-} from 'lucide-react';
-import { readText, readImage, writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { Search, X, Settings, Star, Clipboard, Bookmark, Plus, Pause, Play, AlertCircle, Loader2 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core';
+import { useClipboardStore, queryClipboardItems } from './stores/clipboardStore';
+import { type ClipboardItem, ContentType, type LibraryTab, type ContentFilter } from './types';
+import { isNativeClipboard } from './lib/clipboardClient';
+import { useGlobalShortcut } from './hooks/useGlobalShortcut';
 import { SettingsModal } from './components/Settings';
 import { ItemRow } from './components/ItemRow';
+import { SnippetEditor } from './components/SnippetEditor';
+import { ContentPreview } from './components/ContentPreview';
 
-// 图片大小限制
-const MAX_IMAGE_PIXELS = 4096 * 4096;
-const MAX_BASE64_SIZE = 5 * 1024 * 1024;
-
-const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI__?: unknown }).__TAURI__;
+const PAGE_SIZE = 60;
+const typeFilters: { value: ContentFilter; label: string }[] = [
+  { value: 'all', label: '全部类型' }, { value: ContentType.TEXT, label: '文本' },
+  { value: ContentType.LINK, label: '链接' }, { value: ContentType.CODE, label: '代码' }, { value: ContentType.IMAGE, label: '图片' },
+];
+interface SnippetDraft { id?: number; title: string; content: string; }
 
 export default function App() {
-  const {
-    items,
-    addItem,
-    deleteItem,
-    toggleFavorite,
-    updateNote,
-    clearAll,
-    settings,
-    setSettings
-  } = useClipboardStore();
-
-  // UI State
+  const { items, settings, stats, isLoading, initialized, error, initialize, dismissError, copyItem,
+    deleteItem, toggleFavorite, updateNote, createSnippet, editSnippet, pauseCapture, setSettings } = useClipboardStore();
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'all' | 'fav'>('all');
+  const [tab, setTab] = useState<LibraryTab>('history');
+  const [type, setType] = useState<ContentFilter>('all');
   const [showSettings, setShowSettings] = useState(false);
-  const closeSettings = useCallback(() => setShowSettings(false), []);
-  const [shortcutMode, setShortcutMode] = useState<ShortcutMode>(() => {
-    return localStorage.getItem(STORAGE_KEYS.SHORTCUT_MODE) || 'CommandOrControl+Shift+V';
-  });
+  const [snippetDraft, setSnippetDraft] = useState<SnippetDraft | null>(null);
+  const [previewId, setPreviewId] = useState<number | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [shortcutError, setShortcutError] = useState('');
+  const [dismissedNativeError, setDismissedNativeError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const copyingRef = useRef(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const native = isNativeClipboard();
+  const modalOpen = showSettings || snippetDraft !== null || previewId !== null;
+  const filteredItems = useMemo(() => queryClipboardItems(items, { tab, type, search }), [items, tab, type, search]);
+  const visibleItems = filteredItems.slice(0, visibleCount);
+  const previewItem = items.find(item => item.id === previewId);
+  const counts = useMemo(() => ({
+    history: items.filter(item => !item.isSnippet).length,
+    favorites: items.filter(item => item.isFavorite).length,
+    snippets: items.filter(item => item.isSnippet).length,
+  }), [items]);
 
-  // Refs for clipboard monitoring
-  const lastContentRef = useRef('');
-  const lastImageRef = useRef('');
-  const isProcessingRef = useRef(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => { void initialize().catch(() => {}); }, [initialize]);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  const changeShortcut = useGlobalShortcut(initialized ? settings.globalShortcut : '', setShortcutError);
+  useEffect(() => { if (!stats?.lastError) setDismissedNativeError(''); }, [stats?.lastError]);
 
-  // Search debounce
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-
-  // Visibility tracking for performance
-  const isVisibleRef = useRef(true);
-
-  useGlobalShortcut(shortcutMode);
-
-  // Sync to backend
-  const syncToBackend = useCallback(async (item: ClipboardItem) => {
-    if (!isTauri) return;
-    try {
-      await invoke('add_clipboard_item', {
-        content: item.content,
-        contentType: item.contentType,
-      });
-    } catch (err) {
-      console.warn('[ClipJar] 后端同步失败:', err);
-    }
+  const closeSettings = useCallback(() => setShowSettings(false), []);
+  const closeSnippet = useCallback(() => setSnippetDraft(null), []);
+  const closePreview = useCallback(() => setPreviewId(null), []);
+  const openSnippet = useCallback((item?: ClipboardItem) => {
+    setSnippetDraft(item ? { id: item.isSnippet ? item.id : undefined, title: (item.title || item.note || item.content.split('\n')[0]).slice(0, 80), content: item.content } : { title: '', content: '' });
   }, []);
-
-  // Cleanup function for clipboard polling
-  const cleanupClipboardPolling = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-  }, []);
-
-  // Clipboard polling effect
-  useEffect(() => {
-    if (!isTauri) return;
-
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const checkClipboard = async () => {
-      if (!isVisibleRef.current || isProcessingRef.current) return;
-
-      // Check abort signal
-      if (abortControllerRef.current?.signal.aborted) return;
-
-      isProcessingRef.current = true;
-
-      try {
-        // Read text
-        const text = await readText();
-        if (text?.trim() && text !== lastContentRef.current) {
-          lastContentRef.current = text;
-
-          const newItem: ClipboardItem = {
-            id: Date.now() + Math.random(),
-            content: text.slice(0, APP_CONFIG.MAX_CONTENT_LENGTH),
-            contentType: detectContentType(text),
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            isFavorite: false,
-            useWeight: 0,
-            tags: [],
-          };
-
-          addItem(newItem);
-          syncToBackend(newItem);
-        }
-
-        // Read image
-        try {
-          const imageData = await readImage() as unknown as ImageData;
-          if (imageData?.width && imageData?.height) {
-            const pixelCount = imageData.width * imageData.height;
-
-            // Skip oversized images
-            if (pixelCount > MAX_IMAGE_PIXELS) {
-              lastImageRef.current = `${imageData.width}x${imageData.height}`;
-              return;
-            }
-
-            const imageKey = `${imageData.width}x${imageData.height}`;
-            if (imageKey !== lastImageRef.current) {
-              lastImageRef.current = imageKey;
-
-              const estimatedSize = estimateImageSize(imageData.width, imageData.height);
-              let base64: string;
-
-              if (estimatedSize > 1024 * 1024) {
-                base64 = await resizeImage(imageData, APP_CONFIG.IMAGE_MAX_WIDTH, APP_CONFIG.IMAGE_MAX_HEIGHT);
-              } else {
-                base64 = await convertImageToBase64(imageData);
-              }
-
-              if (base64.length > MAX_BASE64_SIZE) {
-                return;
-              }
-
-              const newItem: ClipboardItem = {
-                id: Date.now() + Math.random(),
-                content: `[图片 ${imageData.width}x${imageData.height}]`,
-                contentType: ContentType.IMAGE,
-                imagePath: base64,
-                imageWidth: imageData.width,
-                imageHeight: imageData.height,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                isFavorite: false,
-                useWeight: 0,
-                tags: [],
-              };
-
-              addItem(newItem);
-              syncToBackend(newItem);
-            }
-          }
-        } catch {
-          // No image in clipboard
-        }
-      } catch (err) {
-        console.warn('[ClipJar] 读取剪贴板失败:', err);
-      } finally {
-        isProcessingRef.current = false;
-      }
-    };
-
-    // Initial read
-    checkClipboard();
-
-    // Set up polling
-    intervalId = setInterval(checkClipboard, APP_CONFIG.CLIPBOARD_POLL_INTERVAL);
-
-    return () => {
-      cleanupClipboardPolling();
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [addItem, syncToBackend, cleanupClipboardPolling]);
-
-  // Visibility change handler
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      isVisibleRef.current = document.visibilityState === 'visible';
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
-  // Search debounce effect
-  useEffect(() => {
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-    }
-
-    searchDebounceRef.current = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, APP_CONFIG.SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      if (searchDebounceRef.current) {
-        clearTimeout(searchDebounceRef.current);
-      }
-    };
-  }, [search]);
-
-  // Copy handler
   const handleCopy = useCallback(async (item: ClipboardItem) => {
-    if (!isTauri) return;
-
+    if (copyingRef.current) return;
+    copyingRef.current = true;
     try {
-      if (item.contentType === ContentType.IMAGE && item.imagePath) {
-        await writeText(item.content);
-      } else {
-        await writeText(item.content);
-        lastContentRef.current = item.content;
-      }
-
-      const currentWindow = getCurrentWindow();
-      await currentWindow.hide();
-
+      await copyItem(item);
       setCopiedId(item.id);
-      setTimeout(() => setCopiedId(null), APP_CONFIG.COPY_SUCCESS_DURATION);
-    } catch (err) {
-      console.error('[ClipJar] 复制失败:', err);
-    }
-  }, []);
+      setNotice('已复制到剪贴板');
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => { setCopiedId(null); setNotice(''); }, 1800);
+      if (native) {
+        try { await getCurrentWindow().hide(); } catch { setNotice('已复制，窗口暂时无法隐藏'); }
+      }
+    } finally { copyingRef.current = false; }
+  }, [copyItem, native]);
+  const saveSnippet = async (title: string, content: string) => {
+    if (snippetDraft?.id !== undefined) await editSnippet(snippetDraft.id, title, content);
+    else await createSnippet(title, content);
+    setTab('snippets'); setType('all'); setSearch('');
+  };
+  const saveNote = async (id: number) => {
+    try { await updateNote(id, noteContent.trim()); setEditingNoteId(null); setNoteContent(''); } catch { /* Store presents the error without discarding the draft. */ }
+  };
+  const runAction = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try { await action(); } catch { /* Store presents operation errors. */ } finally { setBusy(false); }
+  };
 
-  // Note save handler
-  const handleSaveNote = useCallback((id: number) => {
-    const trimmed = noteContent.trim();
-    if (trimmed.length <= 200) {
-      updateNote(id, trimmed);
-    }
-    setEditingNoteId(null);
-    setNoteContent('');
-  }, [noteContent, updateNote]);
-
-  // Filtered items
-  const filteredItems = useMemo(() => {
-    let result = items;
-
-    if (debouncedSearch) {
-      const query = debouncedSearch.toLowerCase();
-      result = result.filter(item =>
-        item.content.toLowerCase().includes(query) ||
-        (item.note && item.note.toLowerCase().includes(query))
-      );
-    }
-
-    if (tab === 'fav') {
-      result = result.filter(i => i.isFavorite);
-    }
-
-    return result.slice(0, APP_CONFIG.LIST_DISPLAY_LIMIT);
-  }, [items, debouncedSearch, tab]);
-
-  // Keyboard navigation
+  useEffect(() => { setSelectedId(null); setVisibleCount(PAGE_SIZE); }, [search, tab, type]);
+  useEffect(() => { if (selectedId !== null && !filteredItems.some(item => item.id === selectedId)) setSelectedId(null); }, [filteredItems, selectedId]);
+  useEffect(() => { if (previewId !== null && !items.some(item => item.id === previewId)) setPreviewId(null); }, [items, previewId]);
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (editingNoteId !== null || showSettings || e.isComposing) return;
-      const target = e.target as HTMLElement;
+    if (editingNoteId !== null && !filteredItems.slice(0, visibleCount).some(item => item.id === editingNoteId)) {
+      setEditingNoteId(null); setNoteContent('');
+    }
+  }, [filteredItems, visibleCount, editingNoteId]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (modalOpen || editingNoteId !== null || event.isComposing || event.defaultPrevented) return;
+      const target = event.target as HTMLElement;
       if (target.closest('textarea, [contenteditable="true"]')) return;
-      if (e.key === 'Enter' && target.closest('button')) return;
-      const selectRow = (index: number) => {
-        if (!filteredItems.length) return;
-        setSelectedIndex(index);
-        if (target.closest('.clipboard-row')) {
-          document.querySelectorAll<HTMLButtonElement>('.clip-content-button')[index]?.focus();
-        }
-      };
-
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          selectRow(Math.min(selectedIndex + 1, filteredItems.length - 1));
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          selectRow(Math.max(selectedIndex - 1, 0));
-          break;
-        case 'Enter':
-          if (selectedIndex >= 0 && filteredItems[selectedIndex]) {
-            e.preventDefault();
-            handleCopy(filteredItems[selectedIndex]);
-          }
-          break;
-        case 'Escape':
-          setSelectedIndex(-1);
-          setSearch('');
-          break;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); searchRef.current?.focus(); return; }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); openSnippet(); return; }
+      if (event.key === 'Enter' && target.closest('button')) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (!filteredItems.length || target.closest('[data-record-actions]')) return;
+        event.preventDefault();
+        const index = filteredItems.findIndex(item => item.id === selectedId);
+        const next = event.key === 'ArrowDown' ? Math.min(index + 1, filteredItems.length - 1) : Math.max(index - 1, 0);
+        setVisibleCount(count => Math.max(count, next + 1));
+        setSelectedId(filteredItems[next].id);
+        if (target.closest('.clipboard-row')) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-copy-id="${filteredItems[next].id}"]`)?.focus());
+      } else if (event.key === 'Enter') {
+        const item = filteredItems.find(record => record.id === selectedId) ?? filteredItems[0];
+        if (item) { event.preventDefault(); void handleCopy(item).catch(() => {}); }
+      } else if (event.key === 'Escape') {
+        if (search) { setSearch(''); setSelectedId(null); }
+        else if (native) void getCurrentWindow().hide().catch(() => {});
+        else setSelectedId(null);
       }
     };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modalOpen, editingNoteId, filteredItems, selectedId, search, native, handleCopy, openSnippet]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredItems, selectedIndex, handleCopy, editingNoteId, showSettings]);
-
-  // Reset selection when search/tab changes
-  useEffect(() => {
-    setSelectedIndex(-1);
-  }, [search, tab]);
-
-  useEffect(() => {
-    setSelectedIndex(index => Math.min(index, filteredItems.length - 1));
-  }, [filteredItems.length]);
+  const failure = error || (stats?.lastError !== dismissedNativeError ? stats?.lastError : '') || shortcutError;
+  const noMatches = search.trim() !== '' || type !== 'all';
+  const tabButtons = [
+    { value: 'history' as const, label: '历史', Icon: Clipboard },
+    { value: 'favorites' as const, label: '收藏', Icon: Star },
+    { value: 'snippets' as const, label: '片段', Icon: Bookmark },
+  ];
 
   return (
     <div className="clipjar-shell">
       <header className="app-header">
         <div className="brand-row">
-          <div className="brand">
-            <span className="brand-mark"><Clipboard size={17} strokeWidth={1.8} /></span>
-            <span className="brand-name">ClipJar</span>
-            <span className="brand-caption">随手复制，随时找回</span>
+          <div className="brand"><span className="brand-mark"><Clipboard size={17} strokeWidth={1.8} /></span><span className="brand-name">ClipJar</span><span className="brand-caption">随手复制，随时找回</span></div>
+          <div className="header-actions">
+            {native && <button type="button" className={`icon-button ${stats?.isPaused ? 'is-paused' : ''}`} disabled={busy || !initialized} onClick={() => void runAction(() => pauseCapture(stats?.isPaused ? 0 : 15))} aria-label={stats?.isPaused ? '恢复后台记录' : '暂停记录 15 分钟'} title={stats?.isPaused ? '恢复记录' : '暂停记录 15 分钟'}>{stats?.isPaused ? <Play size={16} /> : <Pause size={16} />}</button>}
+            <button type="button" onClick={() => setShowSettings(true)} className="icon-button" aria-label="打开设置" title="设置"><Settings size={18} strokeWidth={1.7} /></button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            className="icon-button"
-            aria-label="打开设置"
-            title="设置"
-          >
-            <Settings size={18} strokeWidth={1.7} />
-          </button>
         </div>
-
-        <div className="search-field">
-          <Search size={18} strokeWidth={1.7} aria-hidden="true" />
-          <input
-            type="search"
-            aria-label="搜索剪贴内容或备注"
-            placeholder="搜索内容或备注…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button type="button" onClick={() => setSearch('')} className="icon-button search-clear" aria-label="清除搜索">
-              <X size={15} />
-            </button>
-          )}
-        </div>
-
-        <nav className="filter-row" aria-label="剪贴记录筛选">
-          <div className="filter-tabs">
-            <button type="button" onClick={() => setTab('all')} className={`filter-tab ${tab === 'all' ? 'is-active' : ''}`} aria-pressed={tab === 'all'}>
-              全部<span className="tab-count">{items.length}</span>
-            </button>
-            <button type="button" onClick={() => setTab('fav')} className={`filter-tab ${tab === 'fav' ? 'is-active' : ''}`} aria-pressed={tab === 'fav'}>
-              <Star size={14} strokeWidth={1.8} />收藏<span className="tab-count">{items.filter(i => i.isFavorite).length}</span>
-            </button>
-          </div>
-          <span className="filter-caption">{search ? `${filteredItems.length} 条匹配` : '最近复制'}</span>
-        </nav>
+        <div className="search-field"><Search size={18} strokeWidth={1.7} aria-hidden="true" /><input ref={searchRef} type="search" aria-label="搜索内容、名称或备注" placeholder={tab === 'snippets' ? '搜索片段名称、内容…' : '搜索内容或备注…'} value={search} onChange={e => setSearch(e.target.value)} />{search ? <button type="button" onClick={() => setSearch('')} className="icon-button search-clear" aria-label="清除搜索"><X size={15} /></button> : <span className="search-shortcut">⌘ / Ctrl F</span>}</div>
+        <nav className="filter-row" aria-label="内容库"><div className="filter-tabs">{tabButtons.map(({ value, label, Icon }) => <button key={value} type="button" className={`filter-tab ${tab === value ? 'is-active' : ''}`} onClick={() => { setTab(value); if (value === 'snippets' && type === ContentType.IMAGE) setType('all'); }} aria-pressed={tab === value}><Icon size={14} strokeWidth={1.7} />{label}<span className="tab-count">{counts[value]}</span></button>)}</div><button type="button" className="new-snippet-button" onClick={() => openSnippet()} disabled={!initialized} title="新建片段（Ctrl / ⌘ + N）"><Plus size={14} />新建片段</button></nav>
       </header>
-
-      <main className="clipboard-content" aria-label={tab === 'fav' ? '收藏记录' : '剪贴记录'}>
-        {filteredItems.length === 0 ? (
-          <div className="empty-state" role="status">
-            <span className="empty-symbol">
-              {search ? <Search size={28} strokeWidth={1.3} /> : tab === 'fav' ? <Star size={28} strokeWidth={1.3} /> : <Clipboard size={28} strokeWidth={1.3} />}
-            </span>
-            <h1>{search ? '没有找到匹配内容' : tab === 'fav' ? '把常用内容留在这里' : '从一次复制开始'}</h1>
-            <p>{search ? '试试其他关键词，或清除搜索。' : tab === 'fav' ? '点击记录旁的星标，下次就能快速找到。' : '复制文字、链接或图片，记录会出现在这里。'}</p>
-            {search && <button type="button" className="quiet-button" onClick={() => setSearch('')}>清除搜索</button>}
-          </div>
-        ) : (
-          <ul className="clipboard-list">
-            {filteredItems.map((item, index) => (
-              <li key={item.id}>
-                <ItemRow
-                  item={item}
-                  isCopied={copiedId === item.id}
-                  isSelected={selectedIndex === index}
-                  onSelect={() => setSelectedIndex(index)}
-                  onCopy={handleCopy}
-                  onDelete={deleteItem}
-                  onToggleFavorite={toggleFavorite}
-                  isEditingNote={editingNoteId === item.id}
-                  noteContent={noteContent}
-                  setNoteContent={setNoteContent}
-                  onStartEdit={(id, note) => { setEditingNoteId(id); setNoteContent(note || ''); }}
-                  onSaveNote={handleSaveNote}
-                  onCancelEdit={() => { setEditingNoteId(null); setNoteContent(''); }}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="type-filter-row" aria-label="按内容类型筛选">{typeFilters.filter(filter => tab !== 'snippets' || filter.value !== ContentType.IMAGE).map(filter => <button key={filter.value} type="button" className={`type-filter ${type === filter.value ? 'is-active' : ''}`} onClick={() => setType(filter.value)} aria-pressed={type === filter.value}>{filter.label}</button>)}<span className="result-count">{filteredItems.length} 条</span></div>
+      {failure && <div className="error-banner" role="alert"><AlertCircle size={15} /><span>{failure}</span>{!initialized && <button type="button" onClick={() => void initialize().catch(() => {})}>重试</button>}<button type="button" className="icon-button" aria-label="关闭错误提示" onClick={() => { dismissError(); setShortcutError(''); setDismissedNativeError(stats?.lastError || ''); }}><X size={14} /></button></div>}
+      {!native && <div className="preview-mode-note">可新建和使用片段；自动记录请在桌面应用中使用。</div>}
+      <main className="clipboard-content" aria-label={tab === 'history' ? '剪贴历史' : tab === 'favorites' ? '收藏记录' : '常用片段'}>
+        {isLoading ? <div className="empty-state" role="status"><Loader2 className="loading-spinner" size={24} /><h1>正在读取内容库</h1><p>已有记录会安全地保留。</p></div> : filteredItems.length === 0 ? <div className="empty-state" role="status"><span className="empty-symbol">{noMatches ? <Search size={28} strokeWidth={1.3} /> : tab === 'snippets' ? <Bookmark size={28} strokeWidth={1.3} /> : tab === 'favorites' ? <Star size={28} strokeWidth={1.3} /> : <Clipboard size={28} strokeWidth={1.3} />}</span><h1>{noMatches ? '没有找到匹配内容' : tab === 'snippets' ? '常用内容，随时取用' : tab === 'favorites' ? '把重要内容留在这里' : '从一次复制开始'}</h1><p>{noMatches ? '试试其他关键词，或切换内容类型。' : tab === 'snippets' ? '保存一段回复、地址或代码，下次不用重新输入。' : tab === 'favorites' ? '点击星标收藏，记录会一直保留。' : native ? '复制文字、链接或图片，后台会为你留下记录。' : '在桌面应用中复制内容，会自动保存在这里。'}</p>{noMatches ? <button type="button" className="quiet-button" onClick={() => { setSearch(''); setType('all'); }}>清除筛选</button> : tab === 'snippets' && <button type="button" className="primary-button empty-cta" onClick={() => openSnippet()} disabled={!initialized}><Plus size={14} />新建第一个片段</button>}</div> : <><ul className="clipboard-list">{visibleItems.map(item => <li key={item.id}><ItemRow item={item} search={search} isCopied={copiedId === item.id} isSelected={selectedId === item.id} onSelect={() => setSelectedId(item.id)} onCopy={handleCopy} onDelete={deleteItem} onToggleFavorite={toggleFavorite} onPreview={() => setPreviewId(item.id)} onSnippet={() => openSnippet(item)} isEditingNote={editingNoteId === item.id} noteContent={noteContent} setNoteContent={setNoteContent} onStartEdit={() => { setEditingNoteId(item.id); setNoteContent(item.note || ''); }} onSaveNote={() => saveNote(item.id)} onCancelEdit={() => { setEditingNoteId(null); setNoteContent(''); }} /></li>)}</ul>{visibleCount < filteredItems.length && <button type="button" className="load-more-button" onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>显示更多 <span>还有 {filteredItems.length - visibleCount} 条</span></button>}</>}
       </main>
-
-      <footer className="app-footer">
-        <span>{items.length} 条记录</span>
-        <div className="keyboard-hints">
-          <span><kbd>↑↓</kbd> 选择</span>
-          <span><kbd>↵</kbd> 复制</span>
-        </div>
-      </footer>
-
-      {showSettings && (
-        <SettingsModal
-          onClose={closeSettings}
-          onClearAll={clearAll}
-          itemCount={items.length}
-          shortcutMode={shortcutMode}
-          onShortcutChange={setShortcutMode}
-          settings={settings}
-          setSettings={setSettings}
-        />
-      )}
+      <footer className="app-footer"><span className="capture-status"><span className={`status-dot ${stats?.isPaused ? 'paused' : !native ? 'preview' : ''}`} />{!native ? '本地片段库' : !initialized ? '正在连接…' : stats?.isPaused ? '记录已暂停' : '后台记录中'}</span><div className="keyboard-hints"><span><kbd>↑↓</kbd>选择</span><span><kbd>↵</kbd>复制</span></div></footer>
+      <span className="sr-only" role="status" aria-live="polite">{notice}</span>
+      {notice && !native && <div className="copy-toast"><CheckIcon />{notice}</div>}
+      {showSettings && <SettingsModal onClose={closeSettings} shortcutError={shortcutError} onShortcutChange={mode => changeShortcut(mode, () => setSettings({ globalShortcut: mode }))} />}
+      {snippetDraft && <SnippetEditor title={snippetDraft.title} content={snippetDraft.content} editing={snippetDraft.id !== undefined} onClose={closeSnippet} onSave={saveSnippet} />}
+      {previewItem && <ContentPreview item={previewItem} onClose={closePreview} onCopy={handleCopy} onSnippet={openSnippet} />}
     </div>
   );
 }
+
+function CheckIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 4 4L19 6" /></svg>; }

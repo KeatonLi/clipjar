@@ -1,4 +1,5 @@
 import importlib.util
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -13,11 +14,12 @@ class StorageInspectionTests(unittest.TestCase):
     def test_deleted_values_leave_reusable_pages_without_live_clipboard_data(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "storage.sqlite"
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection:
                 connection.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value BLOB)")
                 connection.execute("INSERT INTO ItemTable VALUES (?, ?)", ("clipjar-storage", b"A" * 1048576))
                 connection.commit()
                 connection.execute("DELETE FROM ItemTable")
+                connection.commit()
             before = path.read_bytes()
             report = module.inspect(path)
             self.assertEqual(report["localstorage_value_bytes"], 0)
