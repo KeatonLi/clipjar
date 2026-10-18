@@ -19,7 +19,7 @@ interface SnippetDraft { id?: number; title: string; content: string; }
 
 export default function App() {
   const { items, settings, stats, isLoading, initialized, error, initialize, dismissError, copyItem,
-    deleteItem, toggleFavorite, updateNote, createSnippet, editSnippet, pauseCapture } = useClipboardStore();
+    deleteItem, toggleFavorite, updateNote, createSnippet, editSnippet, pauseCapture, setSettings } = useClipboardStore();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<LibraryTab>('history');
   const [type, setType] = useState<ContentFilter>('all');
@@ -51,8 +51,7 @@ export default function App() {
 
   useEffect(() => { void initialize().catch(() => {}); }, [initialize]);
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
-  useGlobalShortcut(initialized ? settings.globalShortcut : '', setShortcutError);
-  useEffect(() => { setShortcutError(''); }, [settings.globalShortcut]);
+  const changeShortcut = useGlobalShortcut(initialized ? settings.globalShortcut : '', setShortcutError);
   useEffect(() => { if (!stats?.lastError) setDismissedNativeError(''); }, [stats?.lastError]);
 
   const closeSettings = useCallback(() => setShowSettings(false), []);
@@ -156,7 +155,7 @@ export default function App() {
       <footer className="app-footer"><span className="capture-status"><span className={`status-dot ${stats?.isPaused ? 'paused' : !native ? 'preview' : ''}`} />{!native ? '本地片段库' : !initialized ? '正在连接…' : stats?.isPaused ? '记录已暂停' : '后台记录中'}</span><div className="keyboard-hints"><span><kbd>↑↓</kbd>选择</span><span><kbd>↵</kbd>复制</span></div></footer>
       <span className="sr-only" role="status" aria-live="polite">{notice}</span>
       {notice && !native && <div className="copy-toast"><CheckIcon />{notice}</div>}
-      {showSettings && <SettingsModal onClose={closeSettings} />}
+      {showSettings && <SettingsModal onClose={closeSettings} shortcutError={shortcutError} onShortcutChange={mode => changeShortcut(mode, () => setSettings({ globalShortcut: mode }))} />}
       {snippetDraft && <SnippetEditor title={snippetDraft.title} content={snippetDraft.content} editing={snippetDraft.id !== undefined} onClose={closeSnippet} onSave={saveSnippet} />}
       {previewItem && <ContentPreview item={previewItem} onClose={closePreview} onCopy={handleCopy} onSnippet={openSnippet} />}
     </div>

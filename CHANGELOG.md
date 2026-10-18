@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Preserve the working shortcut when a replacement is occupied or its settings cannot be saved; show shortcut errors inside Settings.
+- Preserve image proportions in list thumbnails instead of stretching them to squares.
 - Image copy now writes a real image rather than a text placeholder.
 - Image deduplication now checks pixel content rather than dimensions alone.
 - Removed the fixed 50-result display cap and disconnected frontend/backend history copies.

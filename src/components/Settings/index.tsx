@@ -13,7 +13,7 @@ function Toggle({ enabled, label, disabled, onToggle }: { enabled: boolean; labe
 }
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({ onClose, shortcutError = '', onShortcutChange }: { onClose: () => void; shortcutError?: string; onShortcutChange: (mode: string) => Promise<void> }) {
   const { settings, stats, items, initialized, setSettings, clearAll, pauseCapture } = useClipboardStore();
   const [startup, setStartup] = useState(settings.startAtLogin);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
@@ -52,6 +52,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <header className="dialog-header"><h2 id="settings-heading">设置</h2><button type="button" className="icon-button" aria-label="关闭设置" onClick={onClose}><X size={18} /></button></header>
         <div className="dialog-body settings-content">
           {localError && <p className="inline-error" role="alert">{localError}</p>}
+          {shortcutError && shortcutError !== localError && <p className="inline-error" role="alert">{shortcutError}</p>}
           <section className="storage-summary" aria-label="本地存储占用">
             <div className="storage-heading"><span><HardDrive size={15} />本地存储</span><strong>{stats ? megabytes(stats.totalBytes) : '读取中…'}</strong></div>
             <progress value={storagePercent} max={100} aria-label="存储容量使用比例" />
@@ -65,7 +66,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             {settings.autoCleanup && <div className="setting-row setting-days"><label htmlFor="cleanup-days">保留时间</label><select id="cleanup-days" className="select-field" value={settings.cleanupDays} disabled={busy || !initialized} onChange={e => void run(() => setSettings({ cleanupDays: Number(e.target.value) }))}>{![7, 30, 90, 365].includes(settings.cleanupDays) && <option value={settings.cleanupDays}>{settings.cleanupDays} 天</option>}<option value={7}>7 天</option><option value={30}>30 天</option><option value={90}>90 天</option><option value={365}>1 年</option></select></div>}
           </section>
           <section className="settings-section"><h3>快捷键与窗口</h3>
-            <div className="setting-block"><label htmlFor="global-shortcut" className="setting-title"><Keyboard size={16} />唤起快捷键</label><select id="global-shortcut" className="select-field shortcut-select" value={settings.globalShortcut} disabled={busy || !initialized} onChange={e => void run(() => setSettings({ globalShortcut: e.target.value }))}>{!currentPresetExists && <option value={settings.globalShortcut}>{settings.globalShortcut}（当前设置）</option>}{SHORTCUT_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</select><p>窗口隐藏时也能快速打开</p></div>
+            <div className="setting-block"><label htmlFor="global-shortcut" className="setting-title"><Keyboard size={16} />唤起快捷键</label><select id="global-shortcut" className="select-field shortcut-select" value={settings.globalShortcut} disabled={busy || !initialized} onChange={e => { const mode = e.target.value; void run(() => onShortcutChange(mode)); }}>{!currentPresetExists && <option value={settings.globalShortcut}>{settings.globalShortcut}（当前设置）</option>}{SHORTCUT_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</select><p>窗口隐藏时也能快速打开</p></div>
             {native ? <><div className="setting-row"><div><span className="setting-title"><Power size={16} />开机自启</span><p>登录电脑时自动运行</p></div><Toggle label="开机自启" enabled={startup} disabled={busy || !initialized} onToggle={() => void run(async () => { if (startup) await disable(); else await enable(); setStartup(!startup); await setSettings({ startAtLogin: !startup }); })} /></div><div className="setting-row"><div><span className="setting-title"><Pin size={16} />窗口置顶</span><p>查找内容时保持在最前面</p></div><Toggle label="窗口置顶" enabled={alwaysOnTop} disabled={busy} onToggle={() => void run(async () => { await getCurrentWindow().setAlwaysOnTop(!alwaysOnTop); setAlwaysOnTop(!alwaysOnTop); })} /></div></> : <p className="subtle-hint">后台记录、全局快捷键和窗口设置在桌面应用中生效。</p>}
           </section>
           <section className="settings-section cleanup-section"><h3>整理空间</h3><p>清空普通历史，保留收藏和常用片段。</p>{confirmClear ? <div className="clear-confirm"><p>清空 {ordinaryCount} 条普通记录？</p><div className="setting-button-row"><button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmClear(false)}>取消</button><button type="button" className="danger-button" disabled={busy} onClick={() => void run(async () => { await clearAll(); setConfirmClear(false); })}>确认清空</button></div></div> : <button type="button" className="danger-button" disabled={busy || !initialized || ordinaryCount === 0} onClick={() => setConfirmClear(true)}><Trash2 size={14} />清空普通历史</button>}</section>
