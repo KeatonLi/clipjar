@@ -8,7 +8,8 @@ import {
   Link,
   Code,
   Image as ImageIcon,
-  FileText
+  FileText,
+  MessageSquareText
 } from 'lucide-react';
 import type { ClipboardItem } from '../../types';
 import { ContentType } from '../../types';
@@ -57,6 +58,13 @@ export const ItemRow = memo(function ItemRow({
 }: ItemRowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const { label, Icon } = contentTypes[item.contentType];
+  const copiedAt = new Date(item.createdAt);
+  const dateTime = Number.isFinite(copiedAt.getTime()) ? copiedAt.toISOString() : undefined;
+  const dayLabel = dateTime ? formatTime(item.createdAt) : '时间未知';
+  const timeLabel =
+    dayLabel === '今天'
+      ? `${dayLabel} ${copiedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}`
+      : dayLabel;
 
   useEffect(() => {
     if (isSelected) rowRef.current?.scrollIntoView({ block: 'nearest' });
@@ -65,6 +73,7 @@ export const ItemRow = memo(function ItemRow({
   return (
     <div
       ref={rowRef}
+      data-type={item.contentType}
       className={`clipboard-row ${isSelected ? 'is-selected' : ''} ${isCopied ? 'is-copied' : ''}`}
     >
       <div className="clip-main">
@@ -96,9 +105,9 @@ export const ItemRow = memo(function ItemRow({
               </span>
             )}
             <span className="clip-meta">
-              <span>{label}</span>
+              <span className="clip-type-label">{label}</span>
               <span aria-hidden="true">·</span>
-              <span>{formatTime(item.createdAt)}</span>
+              <time dateTime={dateTime}>{timeLabel}</time>
               {isCopied && (
                 <span className="copy-feedback" role="status">
                   已复制
@@ -122,7 +131,7 @@ export const ItemRow = memo(function ItemRow({
             type="button"
             onClick={() => onPreview(item)}
             onFocus={onSelect}
-            className="icon-button preview-button"
+            className="icon-button contextual-action preview-button"
             aria-label="预览完整内容"
             title="预览 · 空格"
           >
@@ -146,7 +155,8 @@ export const ItemRow = memo(function ItemRow({
           className={`clip-note ${item.note ? 'has-note' : ''}`}
           onClick={() => onStartEdit(item.id, item.note)}
         >
-          {item.note || '+ 添加备注'}
+          {item.note && <MessageSquareText size={12} aria-hidden="true" />}
+          <span>{item.note || '+ 添加备注'}</span>
         </button>
       )}
 

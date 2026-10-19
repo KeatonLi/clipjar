@@ -12,7 +12,9 @@ import {
   ChevronDown,
   Pause,
   Play,
-  ShieldCheck
+  ShieldCheck,
+  Layers,
+  Clock3
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -80,13 +82,19 @@ export default function App() {
   }, [initialize]);
   useEffect(() => {
     const tick = () => setClock(Date.now());
-    const timer = setInterval(tick, 1000);
+    tick();
+    const deadline = Math.max(pauseUntil ?? 0, undo?.expiresAt ?? 0);
+    if (deadline <= Date.now()) return;
+    const timer = setInterval(() => {
+      tick();
+      if (Date.now() >= deadline) clearInterval(timer);
+    }, 1000);
     window.addEventListener('focus', tick);
     return () => {
       clearInterval(timer);
       window.removeEventListener('focus', tick);
     };
-  }, []);
+  }, [pauseUntil, undo?.expiresAt]);
   useEffect(() => {
     if (!pauseMenu) return;
     const outside = (event: PointerEvent) => {
@@ -282,20 +290,87 @@ export default function App() {
         <div className="brand-row">
           <div className="brand">
             <span className="brand-mark">
-              <Clipboard size={17} strokeWidth={1.8} />
+              <Clipboard size={19} strokeWidth={1.8} />
             </span>
-            <span className="brand-name">ClipJar</span>
-            <span className="brand-caption">随手复制，随时找回</span>
+            <span className="brand-copy">
+              <span className="brand-name">ClipJar</span>
+              <span className="brand-caption">你的剪贴空间</span>
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            className="icon-button"
-            aria-label="打开设置"
-            title="设置"
-          >
-            <Settings size={18} strokeWidth={1.7} />
-          </button>
+          <div className="header-tools">
+            <div
+              className={`capture-controls ${!isTauri ? 'is-preview' : ''} ${paused ? 'is-paused' : ''}`}
+              ref={pauseControls}
+            >
+              <span className="capture-state">
+                {paused ? <Pause size={13} /> : <ShieldCheck size={13} />}
+                {isLoading
+                  ? '正在连接本地记录…'
+                  : !isTauri
+                    ? '浏览器预览'
+                    : paused
+                      ? pauseUntil === 0
+                        ? '已暂停记录'
+                        : `已暂停 · ${Math.max(1, Math.ceil(((pauseUntil ?? clock) - clock) / 60000))} 分钟后恢复`
+                      : '记录中'}
+              </span>
+              {paused ? (
+                <button type="button" className="capture-button" onClick={resumeCapture}>
+                  <Play size={12} />
+                  恢复记录
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="capture-button"
+                  disabled={!isTauri || isLoading}
+                  aria-expanded={pauseMenu}
+                  aria-controls="pause-options"
+                  title={!isTauri ? '系统采集仅桌面端可用' : '暂停期间不会读取或保存剪贴内容'}
+                  onClick={() => setPauseMenu(!pauseMenu)}
+                >
+                  <Pause size={12} />
+                  暂停
+                  <ChevronDown size={11} />
+                </button>
+              )}
+              {pauseMenu && (
+                <div
+                  id="pause-options"
+                  className="pause-options"
+                  role="group"
+                  aria-label="暂停时长"
+                >
+                  {[
+                    { label: '暂停 15 分钟', value: 15 },
+                    { label: '暂停 1 小时', value: 60 },
+                    { label: '直到手动恢复', value: null }
+                  ].map((option) => (
+                    <button
+                      type="button"
+                      key={option.label}
+                      onClick={() => {
+                        setCapturePause(option.value);
+                        setPauseMenu(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  <p>恢复后仅记录新复制的内容</p>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="icon-button"
+              aria-label="打开设置"
+              title="设置"
+            >
+              <Settings size={18} strokeWidth={1.7} />
+            </button>
+          </div>
         </div>
 
         <div className="search-field">
@@ -329,6 +404,7 @@ export default function App() {
               className={`filter-tab ${tab === 'all' ? 'is-active' : ''}`}
               aria-pressed={tab === 'all'}
             >
+              <Layers size={14} strokeWidth={1.8} />
               全部<span className="tab-count">{items.length}</span>
             </button>
             <button
@@ -342,64 +418,10 @@ export default function App() {
             </button>
           </div>
           <span className="filter-caption">
+            {!search && <Clock3 size={12} aria-hidden="true" />}
             {search ? `${matchedItems.length} 条匹配` : '最近复制'}
           </span>
         </nav>
-        <div className={`capture-controls ${paused ? 'is-paused' : ''}`} ref={pauseControls}>
-          <span className="capture-state">
-            {paused ? <Pause size={13} /> : <ShieldCheck size={13} />}
-            {isLoading
-              ? '正在连接本地记录…'
-              : !isTauri
-                ? '浏览器预览'
-                : paused
-                  ? pauseUntil === 0
-                    ? '已暂停记录'
-                    : `已暂停 · ${Math.max(1, Math.ceil(((pauseUntil ?? clock) - clock) / 60000))} 分钟后恢复`
-                  : '后台记录中'}
-          </span>
-          {paused ? (
-            <button type="button" className="capture-button" onClick={resumeCapture}>
-              <Play size={12} />
-              恢复记录
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="capture-button"
-              disabled={!isTauri || isLoading}
-              aria-expanded={pauseMenu}
-              aria-controls="pause-options"
-              title={!isTauri ? '系统采集仅桌面端可用' : '暂停期间不会读取或保存剪贴内容'}
-              onClick={() => setPauseMenu(!pauseMenu)}
-            >
-              <Pause size={12} />
-              暂停
-              <ChevronDown size={11} />
-            </button>
-          )}
-          {pauseMenu && (
-            <div id="pause-options" className="pause-options" role="group" aria-label="暂停时长">
-              {[
-                { label: '暂停 15 分钟', value: 15 },
-                { label: '暂停 1 小时', value: 60 },
-                { label: '直到手动恢复', value: null }
-              ].map((option) => (
-                <button
-                  type="button"
-                  key={option.label}
-                  onClick={() => {
-                    setCapturePause(option.value);
-                    setPauseMenu(false);
-                  }}
-                >
-                  {option.label}
-                </button>
-              ))}
-              <p>恢复后仅记录新复制的内容</p>
-            </div>
-          )}
-        </div>
       </header>
 
       <main className="clipboard-content" aria-label={tab === 'fav' ? '收藏记录' : '剪贴记录'}>

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import installNativeMock from './nativeMock.cjs';
+import installDesignPreview from './fixtures/design-preview.mjs';
 
 const port = Number(process.env.CLIPJAR_TEST_PORT || 4175);
 const url = `http://127.0.0.1:${port}`;
@@ -348,12 +349,26 @@ try {
   );
 
   const sample = tracked(
-    await browser.newPage({ viewport: { width: 480, height: 720 }, locale: 'zh-CN' })
+    await browser.newPage({
+      viewport: { width: 480, height: 720 },
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai'
+    })
   );
   await seed(sample, 5);
+  await sample.addInitScript(installDesignPreview);
   await sample.goto(url);
   await sample.waitForFunction(() => document.querySelectorAll('.clipboard-row').length === 5);
   await screenshot(sample, '01-main');
+  await sample
+    .getByRole('listitem')
+    .filter({ hasText: '480 × 180' })
+    .getByRole('button', { name: '预览完整内容' })
+    .click();
+  await sample.getByRole('dialog').waitFor();
+  await sample.getByRole('img', { name: '已保存的剪贴板图片' }).waitFor();
+  await screenshot(sample, '08-image-preview');
+  await sample.getByRole('button', { name: '关闭预览' }).click();
   await sample.getByRole('button', { name: '打开设置' }).click();
   await screenshot(sample, '04-settings');
   await sample.setViewportSize({ width: 420, height: 600 });
