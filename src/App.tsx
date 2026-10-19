@@ -12,9 +12,7 @@ import {
   ChevronDown,
   Pause,
   Play,
-  ShieldCheck,
-  Layers,
-  Clock3
+  Circle
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -284,18 +282,36 @@ export default function App() {
     setSelectedIndex((index) => Math.min(index, filteredItems.length - 1));
   }, [filteredItems.length]);
 
+  const dayGroup = (timestamp: number) => {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return { key: 'unknown', label: '更早', date: '' };
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const dateLabel = `${date.getMonth() + 1}月${date.getDate()}日`;
+    const label =
+      date.toDateString() === today.toDateString()
+        ? '今天'
+        : date.toDateString() === yesterday.toDateString()
+          ? '昨天'
+          : dateLabel;
+    return {
+      key,
+      label,
+      date: label === '今天' || label === '昨天' ? dateLabel : ''
+    };
+  };
+
   return (
     <div className="clipjar-shell">
       <header className="app-header">
         <div className="brand-row">
           <div className="brand">
             <span className="brand-mark">
-              <Clipboard size={19} strokeWidth={1.8} />
+              <Clipboard size={23} strokeWidth={2} />
             </span>
-            <span className="brand-copy">
-              <span className="brand-name">ClipJar</span>
-              <span className="brand-caption">你的剪贴空间</span>
-            </span>
+            <span className="brand-name">ClipJar</span>
           </div>
           <div className="header-tools">
             <div
@@ -303,7 +319,11 @@ export default function App() {
               ref={pauseControls}
             >
               <span className="capture-state">
-                {paused ? <Pause size={13} /> : <ShieldCheck size={13} />}
+                {paused ? (
+                  <Pause size={13} />
+                ) : (
+                  <Circle size={7} fill="currentColor" strokeWidth={0} />
+                )}
                 {isLoading
                   ? '正在连接本地记录…'
                   : !isTauri
@@ -324,14 +344,14 @@ export default function App() {
                   type="button"
                   className="capture-button"
                   disabled={!isTauri || isLoading}
+                  aria-label="暂停"
                   aria-expanded={pauseMenu}
                   aria-controls="pause-options"
                   title={!isTauri ? '系统采集仅桌面端可用' : '暂停期间不会读取或保存剪贴内容'}
                   onClick={() => setPauseMenu(!pauseMenu)}
                 >
                   <Pause size={12} />
-                  暂停
-                  <ChevronDown size={11} />
+                  <span className="sr-only">暂停</span>
                 </button>
               )}
               {pauseMenu && (
@@ -402,25 +422,22 @@ export default function App() {
               type="button"
               onClick={() => setTab('all')}
               className={`filter-tab ${tab === 'all' ? 'is-active' : ''}`}
+              aria-label={`全部 ${items.length}`}
               aria-pressed={tab === 'all'}
             >
-              <Layers size={14} strokeWidth={1.8} />
-              全部<span className="tab-count">{items.length}</span>
+              全部
             </button>
             <button
               type="button"
               onClick={() => setTab('fav')}
               className={`filter-tab ${tab === 'fav' ? 'is-active' : ''}`}
+              aria-label={`收藏 ${items.filter((item) => item.isFavorite).length}`}
               aria-pressed={tab === 'fav'}
             >
-              <Star size={14} strokeWidth={1.8} />
-              收藏<span className="tab-count">{items.filter((i) => i.isFavorite).length}</span>
+              收藏
             </button>
           </div>
-          <span className="filter-caption">
-            {!search && <Clock3 size={12} aria-hidden="true" />}
-            {search ? `${matchedItems.length} 条匹配` : '最近复制'}
-          </span>
+          <span className="filter-caption">{search ? `${matchedItems.length} 条匹配` : ''}</span>
         </nav>
       </header>
 
@@ -481,7 +498,24 @@ export default function App() {
           <div className="history-results">
             <ul className="clipboard-list">
               {filteredItems.map((item, index) => (
-                <li key={item.id}>
+                <li
+                  key={item.id}
+                  className={
+                    index === 0 ||
+                    dayGroup(filteredItems[index - 1].createdAt).key !==
+                      dayGroup(item.createdAt).key
+                      ? 'starts-day'
+                      : undefined
+                  }
+                >
+                  {(index === 0 ||
+                    dayGroup(filteredItems[index - 1].createdAt).key !==
+                      dayGroup(item.createdAt).key) && (
+                    <h2 className="history-day">
+                      <span>{dayGroup(item.createdAt).label}</span>
+                      <span>{dayGroup(item.createdAt).date}</span>
+                    </h2>
+                  )}
                   <ItemRow
                     item={item}
                     isCopied={copiedId === item.id}

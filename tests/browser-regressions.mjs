@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import installNativeMock from './nativeMock.cjs';
@@ -210,6 +210,7 @@ try {
   await native.waitForFunction(
     () => document.querySelectorAll('.clip-image-preview img').length === 2
   );
+  await native.locator('.clipboard-row').first().hover();
   await native.getByRole('button', { name: '预览完整内容' }).first().click();
   await native.getByRole('dialog').getByAltText('已保存的剪贴板图片').waitFor();
   await native.getByRole('button', { name: '实际大小', exact: true }).click();
@@ -312,6 +313,7 @@ try {
   });
   await native.getByText('after privacy pause', { exact: true }).waitFor();
   const deleteRow = native.getByRole('listitem').filter({ hasText: 'after privacy pause' });
+  await deleteRow.hover();
   await deleteRow.getByRole('button', { name: '删除记录' }).click();
   await native.getByRole('button', { name: /撤销/ }).waitFor();
   assert.equal(await native.getByText('after privacy pause', { exact: true }).count(), 0);
@@ -356,13 +358,16 @@ try {
     })
   );
   await seed(sample, 5);
-  await sample.addInitScript(installDesignPreview);
+  await sample.addInitScript(installDesignPreview, {
+    posterDataUrl: `data:image/png;base64,${readFileSync(new URL('./fixtures/poster.png', import.meta.url)).toString('base64')}`
+  });
   await sample.goto(url);
   await sample.waitForFunction(() => document.querySelectorAll('.clipboard-row').length === 5);
   await screenshot(sample, '01-main');
+  await sample.getByRole('listitem').filter({ hasText: '2048 × 768' }).hover();
   await sample
     .getByRole('listitem')
-    .filter({ hasText: '480 × 180' })
+    .filter({ hasText: '2048 × 768' })
     .getByRole('button', { name: '预览完整内容' })
     .click();
   await sample.getByRole('dialog').waitFor();
