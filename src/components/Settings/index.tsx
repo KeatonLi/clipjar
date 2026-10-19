@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import type { ShortcutMode, ShortcutStatus } from '../../hooks/useGlobalShortcut';
 import { useDialog } from '../../hooks/useDialog';
-import { APP_CONFIG, STORAGE_KEYS } from '../../utils/constants';
+import { APP_CONFIG } from '../../utils/constants';
 import { detectPlatform, shortcutPresets, withTimeout } from '../../utils/desktop';
 
 const native = typeof window !== 'undefined' && !!(window as { __TAURI__?: unknown }).__TAURI__;
@@ -100,6 +100,10 @@ function NativeToggle({
 interface SettingsModalProps {
   onClose(): void;
   onClearAll(): void;
+  onClearHistory(): void;
+  storageBytes: number;
+  migrationBackup: string | null;
+  operationError: string;
   itemCount: number;
   shortcutMode: ShortcutMode;
   onShortcutChange(mode: ShortcutMode): void;
@@ -111,6 +115,10 @@ interface SettingsModalProps {
 export function SettingsModal({
   onClose,
   onClearAll,
+  onClearHistory,
+  storageBytes,
+  migrationBackup,
+  operationError,
   itemCount,
   shortcutMode,
   onShortcutChange,
@@ -124,9 +132,11 @@ export function SettingsModal({
   const platform = detectPlatform(navigator.platform);
   const presets = shortcutPresets(platform);
   const [update, setUpdate] = useState({ state: 'idle', message: '', url: '' });
-  const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmClear, setConfirmClear] = useState<'history' | 'all' | null>(null);
   const [historyDraft, setHistoryDraft] = useState(String(settings.maxHistoryItems));
-  useEffect(() => { setHistoryDraft(String(settings.maxHistoryItems)); }, [settings.maxHistoryItems]);
+  useEffect(() => {
+    setHistoryDraft(String(settings.maxHistoryItems));
+  }, [settings.maxHistoryItems]);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mounted = useRef(true);
   useEffect(() => {
@@ -138,7 +148,7 @@ export function SettingsModal({
   }, []);
   let storageSize = '暂不可用';
   try {
-    storageSize = `${(((localStorage.getItem('clipjar-storage')?.length ?? 0) * 2) / 1024).toFixed(0)} KB`;
+    storageSize = `${((native ? storageBytes : (localStorage.getItem('clipjar-storage')?.length ?? 0) * 2) / 1024).toFixed(0)} KB`;
   } catch {
     /* Storage may be unavailable in private mode. */
   }
@@ -166,14 +176,16 @@ export function SettingsModal({
         setUpdate({ state: 'error', message: '暂时无法检查更新，请稍后重试。', url: '' });
     }
   };
-  const clear = () => {
-    if (confirmClear) {
-      onClearAll();
-      setConfirmClear(false);
+  const clear = (kind: 'history' | 'all') => {
+    if (confirmClear === kind) {
+      if (kind === 'all') onClearAll();
+      else onClearHistory();
+      setConfirmClear(null);
       clearTimeout(clearTimer.current);
     } else {
-      setConfirmClear(true);
-      clearTimer.current = setTimeout(() => setConfirmClear(false), 4000);
+      clearTimeout(clearTimer.current);
+      setConfirmClear(kind);
+      clearTimer.current = setTimeout(() => setConfirmClear(null), 4000);
     }
   };
   const stateDescription = (status: string) =>
@@ -227,6 +239,11 @@ export function SettingsModal({
               浏览器预览 · 系统功能请在桌面端使用
             </p>
           )}
+          {operationError && (
+            <p className="inline-error" role="alert">
+              {operationError}
+            </p>
+          )}
           <section className="settings-section" aria-labelledby="general-settings">
             <h3 id="general-settings">常规</h3>
             <div className="setting-row">
@@ -265,7 +282,6 @@ export function SettingsModal({
                   aria-pressed={shortcutMode === preset.value}
                   onClick={() => {
                     onShortcutChange(preset.value);
-                    localStorage.setItem(STORAGE_KEYS.SHORTCUT_MODE, preset.value);
                   }}
                 >
                   <span className="shortcut-key">
@@ -306,16 +322,29 @@ export function SettingsModal({
                   onChange={(event) => setHistoryDraft(event.target.value)}
                   onBlur={(event) => {
                     const value = Number.parseInt(event.target.value, 10);
-                    const next = Number.isFinite(value) ? Math.max(10, Math.min(500, value)) : settings.maxHistoryItems;
+                    const next = Number.isFinite(value)
+                      ? Math.max(10, Math.min(500, value))
+                      : settings.maxHistoryItems;
                     setHistoryDraft(String(next));
                     if (next !== settings.maxHistoryItems) setSettings({ maxHistoryItems: next });
                   }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.currentTarget.blur();
+                  }}
                 />
                 <span>条</span>
               </label>
             </div>
-            <p className="storage-hint">存储空间不足时，旧图片可能仅保留描述。</p>
+            <p className="storage-hint">
+              {native
+                ? '记录与图片保存在应用数据目录，图片独立存储。'
+                : '浏览器预览使用本地缓存；桌面版图片独立存储。'}
+            </p>
+            {migrationBackup && (
+              <p className="storage-hint">
+                升级前的记录已备份；仅“清空全部数据”会同时删除迁移备份。
+              </p>
+            )}
           </section>
           <section className="settings-section" aria-labelledby="about-settings">
             <h3 id="about-settings">关于</h3>
@@ -362,14 +391,23 @@ export function SettingsModal({
               </p>
             )}
           </section>
+          <div className="danger-zone history-clear">
+            <div>
+              <strong>清空普通历史</strong>
+              <p>收藏及其备注会保留</p>
+            </div>
+            <button className="secondary-button" onClick={() => clear('history')}>
+              {confirmClear === 'history' ? '确认清空历史' : '清空历史'}
+            </button>
+          </div>
           <div className="danger-zone">
             <div>
-              <strong>清空全部记录</strong>
-              <p>{confirmClear ? '包含收藏，删除后无法恢复。' : '清理历史与收藏，请谨慎操作'}</p>
+              <strong>清空全部数据</strong>
+              <p>包含收藏与迁移备份，无法撤销</p>
             </div>
-            <button className="danger-button" onClick={clear}>
+            <button className="danger-button" onClick={() => clear('all')}>
               <Trash2 size={14} />
-              {confirmClear ? '确认清空' : '清空'}
+              {confirmClear === 'all' ? '确认删除全部' : '全部清空'}
             </button>
           </div>
         </div>

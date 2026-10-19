@@ -1,5 +1,7 @@
 # Storage growth investigation
 
+> Historical investigation of the pre-migration implementation. The current desktop implementation uses application-owned SQLite and PNG files; see [native history](native-history.md). The 4 MiB policy below now applies only to browser preview storage. Existing bloated WebView files are not automatically compacted.
+
 Investigated `main` at `c74ea2444fd807e7328f7d8f317a7f68a235d70c` and the released `v1.0.6` source. Neither has an application-owned SQLite database or SQLite dependency. Rust history is an in-memory vector; frontend history is the `clipjar-storage` localStorage value. A large SQLite file may therefore belong to the operating system WebView. The exact file path, application version and live database measurements are still needed to establish the cause of the reported multi-GB files on Windows and macOS.
 
 ## Confirmed defects and fixes
@@ -38,4 +40,4 @@ node --experimental-strip-types tests/storagePolicy.test.ts
 python -m unittest discover -s tests -p 'test_storage_inspection.py' -v
 ```
 
-The SQLite tests reproduce WAL accumulation and retained free pages in temporary databases and verify that diagnostics leave database contents unchanged. These are simulations, not measurements of the user's files. Full frontend builds and desktop runtime verification are currently blocked by unavailable dependency downloads.
+The SQLite tests reproduce WAL accumulation and retained free pages in temporary databases and verify that diagnostics leave database contents unchanged. These are simulations, not measurements of the user's files. Current validation commands and platform limitations are documented in [native history](native-history.md).

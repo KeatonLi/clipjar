@@ -13,7 +13,9 @@
     "build:linux": "npm run build && tauri build --target x86_64-unknown-linux-gnu --bundles deb,appimage",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test:browser": "node tests/browser-regressions.mjs"
+    "test:browser": "node tests/browser-regressions.mjs",
+    "test:native": "node scripts/test-native.mjs",
+    "test:history": "cargo test --locked --manifest-path src-tauri/history-core/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

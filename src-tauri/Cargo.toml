@@ -9,7 +9,8 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.11", features = ["tray-icon"] }
+clipjar-history = { path = "history-core" }
+tauri = { version = "2.11", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
@@ -23,3 +24,7 @@ chrono = { version = "0.4", features = ["serde"] }
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[workspace]
+members = ["history-core"]
+resolver = "2"

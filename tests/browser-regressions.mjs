@@ -165,7 +165,12 @@ try {
   await limit.pressSequentially('150');
   assert.equal(await limit.inputValue(), '150');
   await limit.press('Tab');
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('clipjar-storage')).state.settings.maxHistoryItems), 150);
+  assert.equal(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem('clipjar-storage')).state.settings.maxHistoryItems
+    ),
+    150
+  );
   await page.route('https://api.github.com/repos/KeatonLi/clipjar/releases/latest', (route) =>
     route.fulfill({
       status: 403,
@@ -220,8 +225,19 @@ try {
     window.nativeMock.text = 'hidden clipboard record';
   });
   await native.getByText('hidden clipboard record', { exact: true }).waitFor();
+  assert.equal(
+    await native.evaluate(() =>
+      window.nativeMock.calls.some(
+        (command) =>
+          command === 'plugin:clipboard-manager|read_image' ||
+          command === 'plugin:clipboard-manager|read_text'
+      )
+    ),
+    false
+  );
+  assert.equal(await native.evaluate(() => localStorage.getItem('clipjar-storage')), null);
   console.log(
-    'PASS native adapter regression: image capture/copy/zoom/resource release and hidden capture'
+    'PASS native command/event adapter: file image preview/copy, hidden updates, no frontend polling'
   );
 
   await native.evaluate(() => {
@@ -264,6 +280,72 @@ try {
   await native.getByRole('button', { name: '打开设置' }).click();
   await native.getByRole('button', { name: '重试开机自启' }).waitFor({ timeout: 8000 });
   console.log('PASS native setting timeout exits loading and exposes retry');
+
+  await native.getByRole('button', { name: '关闭设置' }).click();
+  await native.getByRole('button', { name: '暂停', exact: true }).click();
+  await native.getByRole('button', { name: '直到手动恢复', exact: true }).click();
+  await native.getByText('已暂停记录', { exact: true }).waitFor();
+  await screenshot(native, '06-privacy-pause');
+  await native.evaluate(() => {
+    window.nativeMock.text = 'private data never saved';
+    window.nativeMock.record();
+  });
+  assert.equal(
+    await native.evaluate(() =>
+      window.nativeMock.db.items.some((item) => item.content === 'private data never saved')
+    ),
+    false
+  );
+  await native.getByRole('button', { name: '恢复记录', exact: true }).click();
+  await native.waitForFunction(() => window.nativeMock.db.pauseUntil === null);
+  await native.evaluate(() => window.nativeMock.record());
+  assert.equal(
+    await native.evaluate(() =>
+      window.nativeMock.db.items.some((item) => item.content === 'private data never saved')
+    ),
+    false
+  );
+  await native.evaluate(() => {
+    window.nativeMock.text = 'after privacy pause';
+    window.nativeMock.record();
+  });
+  await native.getByText('after privacy pause', { exact: true }).waitFor();
+  const deleteRow = native.getByRole('listitem').filter({ hasText: 'after privacy pause' });
+  await deleteRow.getByRole('button', { name: '删除记录' }).click();
+  await native.getByRole('button', { name: /撤销/ }).waitFor();
+  assert.equal(await native.getByText('after privacy pause', { exact: true }).count(), 0);
+  await screenshot(native, '07-delete-undo');
+  await native.getByRole('button', { name: /撤销/ }).click();
+  await native.getByText('after privacy pause', { exact: true }).waitFor();
+  const countBefore = await native.locator('.clipboard-row').count();
+  await native.evaluate(() =>
+    window.nativeMock.emit('history-changed', { ...window.nativeMock.db, revision: 0, items: [] })
+  );
+  assert.equal(await native.locator('.clipboard-row').count(), countBefore);
+  console.log(
+    'PASS privacy pause, no catch-up, delete/undo, stale event rejection and no browser persistence of native records'
+  );
+
+  const migration = tracked(await browser.newPage({ viewport: { width: 480, height: 720 } }));
+  await seed(migration, 5);
+  await migration.addInitScript(installNativeMock);
+  await migration.addInitScript(() => {
+    window.nativeMock.migrationFails = true;
+  });
+  await migration.goto(url);
+  await migration.getByRole('alert').filter({ hasText: '旧记录迁移失败' }).waitFor();
+  assert.notEqual(await migration.evaluate(() => localStorage.getItem('clipjar-storage')), null);
+  await migration.evaluate(() => {
+    window.nativeMock.migrationFails = false;
+  });
+  await migration.getByRole('button', { name: '重新连接' }).click();
+  await migration.waitForFunction(() => localStorage.getItem('clipjar-storage') === null);
+  assert.ok(
+    await migration.getByText('记录 1：让每一段灵感，都有迹可循。', { exact: true }).count()
+  );
+  console.log(
+    'PASS failed migration preserves old cache and successful retry removes it only after committed response'
+  );
 
   const sample = tracked(
     await browser.newPage({ viewport: { width: 480, height: 720 }, locale: 'zh-CN' })

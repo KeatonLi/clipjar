@@ -11,7 +11,6 @@ build/
 
 # Tauri
 /src-tauri/target/
-/src-tauri/Cargo.lock
 /src-tauri/*.log
 /src-tauri/WixTools/
 /src-tauri/gen/
@@ -64,3 +63,8 @@ coverage/
 *.tmp
 *.temp
 Thumbs.db
+# Automated desktop test artifacts
+test-results/
+
+# Python diagnostic test cache
+__pycache__/
