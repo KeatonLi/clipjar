@@ -10,6 +10,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-is-visible",
     "core:window:allow-set-always-on-top",
+    "core:window:allow-is-always-on-top",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-image",

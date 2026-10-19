@@ -14,7 +14,7 @@ export const APP_CONFIG = {
   // 默认最大历史记录数
   DEFAULT_MAX_HISTORY: 100,
 
-  // 列表显示最大条数
+  // 每批加载条数（所有匹配记录均可继续加载）
   LIST_DISPLAY_LIMIT: 50,
 
   // 复制成功提示持续时间 (ms)
@@ -46,14 +46,7 @@ export const DEFAULT_SETTINGS = {
   maxHistoryItems: 100,
   autoCleanup: true,
   cleanupDays: 30,
-  globalShortcut: 'Win', // 双击 Win 唤起窗口
+  globalShortcut: 'CommandOrControl+Shift+V',
   startAtLogin: false,
   showPreview: true,
 } as const;
-
-/** 可选的快捷键模式 */
-export const SHORTCUT_PRESETS = [
-  { label: '双击 Win (推荐)', value: 'Win', description: '双击 Windows 键' },
-  { label: '双击 Option', value: 'Option', description: '双击 Mac Option 键' },
-  { label: 'Ctrl+Shift+V', value: 'CommandOrControl+Shift+V', description: '传统组合键' },
-] as const;
