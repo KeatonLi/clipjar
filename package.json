@@ -4,6 +4,7 @@
   "description": "跨平台剪贴板管理器",
   "type": "module",
   "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "dev": "vite",
     "build": "tsc && vite build",
     "build:win": "npm run build && tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis",

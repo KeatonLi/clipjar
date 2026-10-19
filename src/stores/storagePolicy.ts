@@ -4,7 +4,6 @@ import type { AppSettings, ClipboardItem } from '../types';
 // Count UTF-16 code units, including JSON/base64 overhead, rather than decoded images.
 export const MAX_PERSISTED_BYTES = 4 * 1024 * 1024;
 export const MAX_PERSISTED_IMAGE_BYTES = 500 * 1024;
-export const MAX_STORED_ITEMS = 100;
 const MAX_CONTENT_LENGTH = 10000;
 
 export function serializedBytes(value: unknown): number {
@@ -17,7 +16,6 @@ export function retainItems(items: ClipboardItem[], settings: AppSettings, now =
   const favorites = sorted.filter(item => item.isFavorite);
   const normal = sorted.filter(item => !item.isFavorite && (!settings.autoCleanup || item.createdAt > cutoff));
   return [...favorites, ...normal.slice(0, settings.maxHistoryItems)]
-    .slice(0, MAX_STORED_ITEMS)
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 

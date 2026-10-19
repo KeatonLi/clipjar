@@ -42,6 +42,24 @@ test('age cleanup respects the switch and keeps favorites', () => {
   assert.equal(retainItems([old, favorite], { ...settings, autoCleanup: false }, now).length, 2);
 });
 
+test('more than 100 favorites survive retention and persistence regardless of age or history limit', () => {
+  const favorites = Array.from({ length: 150 }, (_, i) => item(i, { isFavorite: true, createdAt: 1, note: `favorite ${i}` }));
+  const limited = { ...settings, maxHistoryItems: 10 };
+  const result = persistedSnapshot(favorites, limited);
+  assert.equal(result.items.length, 150);
+  assert.deepEqual(result.items.map(i => i.note), favorites.map(i => i.note));
+  assert.equal(retainItems(result.items, limited, now + 86400000).length, 150);
+});
+
+test('favorites do not consume the configured non-favorite history limit', () => {
+  const favorites = Array.from({ length: 120 }, (_, i) => item(i + 1000, { isFavorite: true }));
+  const normal = Array.from({ length: 200 }, (_, i) => item(i));
+  const result = retainItems([...favorites, ...normal], { ...settings, maxHistoryItems: 150 }, now);
+  assert.equal(result.filter(i => i.isFavorite).length, 120);
+  assert.equal(result.filter(i => !i.isFavorite).length, 150);
+  assert.deepEqual(result.filter(i => !i.isFavorite).map(i => i.id), Array.from({ length: 150 }, (_, i) => i));
+});
+
 test('UTF-16 JSON budget includes escaping, base64 and envelope overhead', () => {
   const items = Array.from({ length: 100 }, (_, i) => item(i, { content: '中\\"'.repeat(4000), note: '备注'.repeat(100), tags: Array(32).fill('标签'.repeat(32)), imagePath: image }));
   const result = persistedSnapshot(items, settings);

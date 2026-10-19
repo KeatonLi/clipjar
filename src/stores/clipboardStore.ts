@@ -140,7 +140,9 @@ export const useClipboardStore = create<ClipboardState>()(
         const duplicateWindow = APP_CONFIG.DUPLICATE_WINDOW;
         const isDuplicate = state.items.some(
           existing =>
+            existing.contentType === item.contentType &&
             existing.content === item.content &&
+            existing.imagePath === item.imagePath &&
             Math.abs(existing.createdAt - item.createdAt) < duplicateWindow
         );
         if (isDuplicate) return;

@@ -8,6 +8,27 @@ export function estimateImageSize(width: number, height: number): number {
   return width * height * 4;
 }
 
+/** Decode stored PNG/JPEG data URLs to the RGBA input expected by Tauri Image.new. */
+export async function decodeClipboardImage(source: string) {
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('图片数据无法读取，请重新复制原图。'));
+    image.src = source;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('无法读取图片像素');
+  context.drawImage(image, 0, 0);
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    rgba: new Uint8Array(context.getImageData(0, 0, canvas.width, canvas.height).data),
+  };
+}
+
 /**
  * 将 RGBA 数据转换为 base64 - 内存优化版本
  * 直接使用 ImageData + putImageData，避免创建中间 ImageBitmap 对象

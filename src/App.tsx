@@ -1,22 +1,20 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
-import { type ClipboardItem, ContentType, type ImageData } from './types';
+import { type ClipboardItem, ContentType } from './types';
 import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
 import { detectContentType } from './utils';
-import { convertImageToBase64, resizeImage, estimateImageSize } from './utils/image';
+import { convertImageToBase64, resizeImage, estimateImageSize, decodeClipboardImage } from './utils/image';
 import { APP_CONFIG, STORAGE_KEYS } from './utils/constants';
 import {
   Search, X, Settings, Star, Clipboard
 } from 'lucide-react';
-import { readText, readImage, writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { readText, readImage, writeText, writeImage } from '@tauri-apps/plugin-clipboard-manager';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { Image as TauriImage } from '@tauri-apps/api/image';
+import { createClipboardMonitor, writeClipboardItem } from './utils/clipboard';
 import { SettingsModal } from './components/Settings';
 import { ItemRow } from './components/ItemRow';
-
-// 图片大小限制
-const MAX_IMAGE_PIXELS = 4096 * 4096;
-const MAX_BASE64_SIZE = 5 * 1024 * 1024;
 
 const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI__?: unknown }).__TAURI__;
 
@@ -43,20 +41,14 @@ export default function App() {
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copyError, setCopyError] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  // Refs for clipboard monitoring
-  const lastContentRef = useRef('');
-  const lastImageRef = useRef('');
-  const isProcessingRef = useRef(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const monitorRef = useRef<ReturnType<typeof createClipboardMonitor> | null>(null);
 
   // Search debounce
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState('');
-
-  // Visibility tracking for performance
-  const isVisibleRef = useRef(true);
 
   useGlobalShortcut(shortcutMode);
 
@@ -73,129 +65,37 @@ export default function App() {
     }
   }, []);
 
-  // Cleanup function for clipboard polling
-  const cleanupClipboardPolling = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-  }, []);
-
-  // Clipboard polling effect
+  // Keep recording while hidden in the tray. Only unmounting stops the monitor.
   useEffect(() => {
     if (!isTauri) return;
-
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const checkClipboard = async () => {
-      if (!isVisibleRef.current || isProcessingRef.current) return;
-
-      // Check abort signal
-      if (abortControllerRef.current?.signal.aborted) return;
-
-      isProcessingRef.current = true;
-
-      try {
-        // Read text
-        const text = await readText();
-        if (text?.trim() && text !== lastContentRef.current) {
-          lastContentRef.current = text;
-
-          const newItem: ClipboardItem = {
-            id: Date.now() + Math.random(),
-            content: text.slice(0, APP_CONFIG.MAX_CONTENT_LENGTH),
-            contentType: detectContentType(text),
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            isFavorite: false,
-            useWeight: 0,
-            tags: [],
-          };
-
-          addItem(newItem);
-          syncToBackend(newItem);
-        }
-
-        // Read image
-        try {
-          const imageData = await readImage() as unknown as ImageData;
-          if (imageData?.width && imageData?.height) {
-            const pixelCount = imageData.width * imageData.height;
-
-            // Skip oversized images
-            if (pixelCount > MAX_IMAGE_PIXELS) {
-              lastImageRef.current = `${imageData.width}x${imageData.height}`;
-              return;
-            }
-
-            const imageKey = `${imageData.width}x${imageData.height}`;
-            if (imageKey !== lastImageRef.current) {
-              lastImageRef.current = imageKey;
-
-              const estimatedSize = estimateImageSize(imageData.width, imageData.height);
-              let base64: string;
-
-              if (estimatedSize > 1024 * 1024) {
-                base64 = await resizeImage(imageData, APP_CONFIG.IMAGE_MAX_WIDTH, APP_CONFIG.IMAGE_MAX_HEIGHT);
-              } else {
-                base64 = await convertImageToBase64(imageData);
-              }
-
-              if (base64.length > MAX_BASE64_SIZE) {
-                return;
-              }
-
-              const newItem: ClipboardItem = {
-                id: Date.now() + Math.random(),
-                content: `[图片 ${imageData.width}x${imageData.height}]`,
-                contentType: ContentType.IMAGE,
-                imagePath: base64,
-                imageWidth: imageData.width,
-                imageHeight: imageData.height,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                isFavorite: false,
-                useWeight: 0,
-                tags: [],
-              };
-
-              addItem(newItem);
-              syncToBackend(newItem);
-            }
-          }
-        } catch {
-          // No image in clipboard
-        }
-      } catch (err) {
-        console.warn('[ClipJar] 读取剪贴板失败:', err);
-      } finally {
-        isProcessingRef.current = false;
-      }
+    const save = (content: string, contentType: ContentType, image?: { dataUrl: string; width: number; height: number }) => {
+      const now = Date.now();
+      const item: ClipboardItem = {
+        id: now + Math.random(), content, contentType,
+        createdAt: now, updatedAt: now, isFavorite: false, useWeight: 0, tags: [],
+        ...(image && { imagePath: image.dataUrl, imageWidth: image.width, imageHeight: image.height }),
+      };
+      addItem(item);
+      void syncToBackend(item);
     };
-
-    // Initial read
-    checkClipboard();
-
-    // Set up polling
-    intervalId = setInterval(checkClipboard, APP_CONFIG.CLIPBOARD_POLL_INTERVAL);
-
+    const monitor = createClipboardMonitor({
+      readText, readImage,
+      encodeImage: image => estimateImageSize(image.width, image.height) > 1024 * 1024
+        ? resizeImage(image, APP_CONFIG.IMAGE_MAX_WIDTH, APP_CONFIG.IMAGE_MAX_HEIGHT)
+        : convertImageToBase64(image),
+      onText: text => save(text.slice(0, APP_CONFIG.MAX_CONTENT_LENGTH), detectContentType(text)),
+      onImage: image => save(`[图片 ${image.width}x${image.height}]`, ContentType.IMAGE, image),
+      onError: error => console.warn('[ClipJar] 读取剪贴板失败:', error),
+    });
+    monitorRef.current = monitor;
+    void monitor.poll();
+    const interval = setInterval(() => void monitor.poll(), APP_CONFIG.CLIPBOARD_POLL_INTERVAL);
     return () => {
-      cleanupClipboardPolling();
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+      clearInterval(interval);
+      monitor.stop();
+      if (monitorRef.current === monitor) monitorRef.current = null;
     };
-  }, [addItem, syncToBackend, cleanupClipboardPolling]);
-
-  // Visibility change handler
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      isVisibleRef.current = document.visibilityState === 'visible';
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  }, [addItem, syncToBackend]);
 
   // Search debounce effect
   useEffect(() => {
@@ -219,12 +119,13 @@ export default function App() {
     if (!isTauri) return;
 
     try {
-      if (item.contentType === ContentType.IMAGE && item.imagePath) {
-        await writeText(item.content);
-      } else {
-        await writeText(item.content);
-        lastContentRef.current = item.content;
-      }
+      setCopyError('');
+      await writeClipboardItem<TauriImage>(item, {
+        writeText, decodeImage: decodeClipboardImage,
+        createImage: (rgba, width, height) => TauriImage.new(rgba, width, height),
+        writeImage,
+      });
+      if (item.contentType !== ContentType.IMAGE) monitorRef.current?.markTextCopied(item.content);
 
       const currentWindow = getCurrentWindow();
       await currentWindow.hide();
@@ -232,6 +133,7 @@ export default function App() {
       setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), APP_CONFIG.COPY_SUCCESS_DURATION);
     } catch (err) {
+      setCopyError(err instanceof Error ? err.message : '复制失败，请重试。');
       console.error('[ClipJar] 复制失败:', err);
     }
   }, []);
@@ -365,6 +267,7 @@ export default function App() {
       </header>
 
       <main className="clipboard-content" aria-label={tab === 'fav' ? '收藏记录' : '剪贴记录'}>
+        {copyError && <p role="alert" className="px-4 py-2 text-sm text-red-600">{copyError}</p>}
         {filteredItems.length === 0 ? (
           <div className="empty-state" role="status">
             <span className="empty-symbol">
