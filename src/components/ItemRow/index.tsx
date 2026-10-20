@@ -79,9 +79,16 @@ export const ItemRow = memo(function ItemRow({
         <button
           type="button"
           className={`clip-content-button ${hasImage ? 'has-image' : ''}`}
-          onClick={() => onCopy(item)}
+          onClick={() => (item.contentType === ContentType.IMAGE ? onSelect() : onCopy(item))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && item.contentType === ContentType.IMAGE) {
+              event.preventDefault();
+              event.stopPropagation();
+              void onCopy(item);
+            }
+          }}
           onFocus={onSelect}
-          aria-label={`复制${label}：${truncate(item.content, 60)}`}
+          aria-label={`${item.contentType === ContentType.IMAGE ? '查看' : '复制'}${label}：${truncate(item.content, 60)}`}
         >
           <span className="clip-type-icon" aria-hidden="true">
             <Icon size={17} strokeWidth={1.65} />

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import installNativeMock from './nativeMock.cjs';
 import installDesignPreview from './fixtures/design-preview.mjs';
+import installCobaltPreview from './fixtures/cobalt-preview.mjs';
 
 const port = Number(process.env.CLIPJAR_TEST_PORT || 4175);
 const url = `http://127.0.0.1:${port}`;
@@ -198,7 +199,11 @@ try {
   console.log('PASS platform-specific macOS shortcut choices');
 
   const native = tracked(await context.newPage());
-  await native.addInitScript(installNativeMock);
+  // This command-boundary scenario exercises the Windows shortcut preset on
+  // every runner. The separate MacIntel scenario above checks macOS choices.
+  await native.addInitScript({
+    content: `Object.defineProperty(navigator, 'platform', { value: 'Win32', configurable: true });(${installNativeMock.toString()})();`
+  });
   await native.goto(url);
   await native.waitForFunction(
     () => document.querySelectorAll('.clip-image-preview img').length > 0
@@ -221,6 +226,14 @@ try {
   assert.deepEqual(await native.evaluate(() => window.nativeMock.writes[0].rgba), [0, 0, 255, 255]);
   await native.waitForFunction(() => window.nativeMock.resources.size === 0);
   await native.getByRole('dialog').waitFor({ state: 'hidden' });
+  await native.locator('.clip-content-button').first().click();
+  const inline = native.getByRole('region', { name: '图片快速预览' });
+  await inline.getByAltText('选中记录的图片').waitFor();
+  assert.equal(await native.getByRole('dialog').count(), 0);
+  await inline.getByRole('button', { name: '复制图片', exact: true }).click();
+  await native.waitForFunction(() => window.nativeMock.writes.length === 2);
+  assert.deepEqual(await native.evaluate(() => window.nativeMock.writes[1].rgba), [0, 0, 255, 255]);
+  console.log('PASS inline image selection and copy retain the saved native pixel payload');
   await native.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
     window.nativeMock.image = null;
@@ -399,6 +412,67 @@ try {
     true
   );
   await screenshot(sample, '05-small-settings');
+  const cobalt = tracked(
+    await browser.newPage({
+      viewport: { width: 480, height: 720 },
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai'
+    })
+  );
+  await cobalt.addInitScript({
+    content: `(${installCobaltPreview.toString()})();(${installNativeMock.toString()})();window.nativeMock.image=null;`
+  });
+  await cobalt.goto(url);
+  await cobalt.getByRole('button', { name: /查看图片/ }).click();
+  const inspector = cobalt.getByRole('region', { name: '图片快速预览' });
+  await inspector.getByAltText('选中记录的图片').waitFor();
+  await cobalt.waitForFunction(
+    () => document.querySelector('.inspector-media img')?.naturalWidth > 0
+  );
+  await cobalt.mouse.move(0, 0);
+  await screenshot(cobalt, '09-cobalt-main');
+  await cobalt.setViewportSize({ width: 420, height: 600 });
+  await inspector.getByRole('button', { name: '复制图片', exact: true }).scrollIntoViewIfNeeded();
+  const actionBounds = await inspector
+    .getByRole('button', { name: '复制图片', exact: true })
+    .boundingBox();
+  assert.ok(
+    actionBounds.x >= 0 &&
+      actionBounds.x + actionBounds.width <= 420 &&
+      actionBounds.y + actionBounds.height <= 600
+  );
+  await screenshot(cobalt, '10-cobalt-small');
+  await cobalt.evaluate(() => {
+    const state = window.nativeMock;
+    state.db.items.find((i) => i.id === 2003).imagePath = 'data:image/png;base64,invalid';
+    state.db.revision++;
+    state.emit('history-changed', state.db);
+  });
+  await inspector.getByText('图片数据不可用，请重新复制原图。').waitFor();
+  assert.equal(
+    await inspector.getByRole('button', { name: '复制图片', exact: true }).isDisabled(),
+    true
+  );
+  await cobalt.getByRole('searchbox').focus();
+  await cobalt.keyboard.press('Escape');
+  await inspector.waitFor({ state: 'hidden' });
+  await cobalt.evaluate(() => {
+    const state = window.nativeMock;
+    state.db.items.find((i) => i.id === 2003).imagePath = '/tests/fixtures/architecture.png';
+    state.db.revision++;
+    state.emit('history-changed', state.db);
+  });
+  await cobalt.getByRole('button', { name: /查看图片/ }).click();
+  await cobalt.waitForFunction(
+    () => document.querySelector('.inspector-media img')?.naturalWidth > 0
+  );
+  assert.equal(
+    await inspector.getByRole('button', { name: '复制图片', exact: true }).isEnabled(),
+    true
+  );
+  console.log(
+    'PASS cobalt inspector: 420px controls, broken-image copy guard, selection reset and recovery'
+  );
   assert.deepEqual(errors, []);
   console.log('PASS 420x600 modal bounds, focus containment, and no uncaught page errors');
 } finally {

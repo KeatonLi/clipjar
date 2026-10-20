@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
-import { type ClipboardItem } from './types';
+import { type ClipboardItem, ContentType } from './types';
 import { useGlobalShortcut, type ShortcutMode } from './hooks/useGlobalShortcut';
 import { APP_CONFIG } from './utils/constants';
 import {
@@ -18,6 +18,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/Settings';
 import { ItemRow } from './components/ItemRow';
+import { ImageInspector } from './components/ImageInspector';
 import { Preview } from './components/Preview';
 import { detectPlatform } from './utils/desktop';
 import { capturePaused } from './stores/historyPolicy';
@@ -304,13 +305,12 @@ export default function App() {
   };
 
   return (
-    <div className="clipjar-shell">
+    <div
+      className={`clipjar-shell ${filteredItems[selectedIndex]?.contentType === ContentType.IMAGE ? 'has-image-inspector' : ''}`}
+    >
       <header className="app-header">
         <div className="brand-row">
           <div className="brand">
-            <span className="brand-mark">
-              <Clipboard size={19} strokeWidth={1.7} />
-            </span>
             <span className="brand-name">ClipJar</span>
           </div>
           <div className="header-tools">
@@ -425,7 +425,7 @@ export default function App() {
               aria-label={`全部 ${items.length}`}
               aria-pressed={tab === 'all'}
             >
-              全部
+              最近
             </button>
             <button
               type="button"
@@ -538,6 +538,15 @@ export default function App() {
                       setNoteContent('');
                     }}
                   />
+                  {selectedIndex === index && item.contentType === ContentType.IMAGE && (
+                    <ImageInspector
+                      key={item.id}
+                      item={item}
+                      onCopy={handleCopy}
+                      onPreview={openPreview}
+                      onToggleFavorite={toggleFavorite}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
