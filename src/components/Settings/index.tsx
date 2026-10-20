@@ -215,7 +215,7 @@ export function SettingsModal({
             </span>
             <div>
               <h2 id="settings-title">偏好设置</h2>
-              <p>让 ClipJar 更合你的习惯</p>
+              <p>通用、快捷键与本地数据</p>
             </div>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="关闭设置">
@@ -412,7 +412,7 @@ export function SettingsModal({
           </div>
         </div>
         <footer className="settings-footer">
-          偏好自动保存 <span>ClipJar · 为专注留一点空间</span>
+          偏好自动保存 <span>v{APP_CONFIG.VERSION}</span>
         </footer>
       </div>
     </div>

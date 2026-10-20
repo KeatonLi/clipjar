@@ -16,7 +16,7 @@ import { ContentType } from '../../types';
 import { formatTime, truncate } from '../../utils';
 
 const contentTypes = {
-  [ContentType.TEXT]: { label: '纯文本', Icon: FileText },
+  [ContentType.TEXT]: { label: '文本', Icon: FileText },
   [ContentType.CODE]: { label: '代码', Icon: Code },
   [ContentType.LINK]: { label: '链接', Icon: Link },
   [ContentType.IMAGE]: { label: '图片', Icon: ImageIcon },
@@ -84,7 +84,7 @@ export const ItemRow = memo(function ItemRow({
           aria-label={`复制${label}：${truncate(item.content, 60)}`}
         >
           <span className="clip-type-icon" aria-hidden="true">
-            <Icon size={19} strokeWidth={1.7} />
+            <Icon size={17} strokeWidth={1.65} />
           </span>
           <span className="clip-body">
             {hasImage ? (
@@ -105,13 +105,6 @@ export const ItemRow = memo(function ItemRow({
             {!hasImage && (
               <span className="clip-meta">
                 <span>{label}</span>
-                {(item.contentType === ContentType.TEXT ||
-                  item.contentType === ContentType.CODE) && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span>{item.content.length} 字</span>
-                  </>
-                )}
                 {isCopied && (
                   <span className="copy-feedback" role="status">
                     已复制

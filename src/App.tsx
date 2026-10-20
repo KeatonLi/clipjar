@@ -309,7 +309,7 @@ export default function App() {
         <div className="brand-row">
           <div className="brand">
             <span className="brand-mark">
-              <Clipboard size={23} strokeWidth={2} />
+              <Clipboard size={19} strokeWidth={1.7} />
             </span>
             <span className="brand-name">ClipJar</span>
           </div>
