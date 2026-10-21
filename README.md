@@ -26,7 +26,7 @@
 
 ## 界面预览
 
-[查看主界面、全文预览和偏好设置截图](docs/ui-preview.md)。截图使用独立示例数据，来自浏览器开发模式。
+[查看 Nova 组件版实际界面](docs/ui-preview.md)：使用 shadcn/ui Nova、Lucide、Motion 和 Zustand，保留钴蓝与白色主题。[组件来源与选型说明](docs/component-system.md)。截图使用独立示例数据，同时提供浏览器与 Linux Tauri 原生窗口的运行证据。
 
 ---
 

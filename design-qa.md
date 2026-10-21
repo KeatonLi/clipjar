@@ -1,33 +1,32 @@
-# ClipJar 钴蓝与白色视觉验收
+# ClipJar Nova 组件视觉 QA
 
 final result: passed
 
-2026-10-20。依据用户明确选择的“钴蓝构成 + 白色”制作，参考稿为 [02-cobalt.png](docs/design/concepts/02-cobalt.png)。本次验收对象是已有桌面应用，保留真实历史记录、系统复制、收藏、备注、搜索与隐私暂停。
+2026-10-21（Asia/Shanghai）。按用户指定的 shadcn/ui Nova、Lucide、Motion、Zustand 统一当前界面，保留已选的钴蓝与白色构成。没有对应功能的分栏和拖拽不引入。
 
-## 对照与观察
+## 来源与对照
 
-[并排对照](docs/screenshots/cobalt-comparison.png)：左为选中概念稿，右为实际运行页面。参考图从 1024 × 1536 等比缩至 480 × 720，实际截图为 480 × 720 CSS viewport、deviceScaleFactor 1，无拉伸。使用独立示例记录，时区 Asia/Shanghai。
+- 基础控件和 Nova 样式来自 shadcn/ui 官方提交 `ba1503c`，来源及局部适配见[组件体系](docs/component-system.md)。
+- [构成对照](docs/screenshots/cobalt-comparison.png)：左为此前选中的概念稿，右为当前 Nova 实际界面。参考稿从 1024 × 1536 等比归一到 480 × 720；右图 CSS viewport 480 × 720、deviceScaleFactor 1，没有拉伸。
+- [组件对照](docs/screenshots/nova-components.png)：本轮实际主界面、设置与确认弹窗，均使用隔离示例数据。
 
-- 钴蓝 `#2344b6` 集中在顶栏和主要动作；主体按用户要求使用纯白，替代概念稿的暖白。
-- 保留大字标、半透明搜索框、下划线导航、连续列表与轻量选中态。480 × 720 下顶栏约 165 px，图片主操作位于可见范围内。
-- 选中图片后，在记录下方显示大图、真实尺寸、放大、收藏与复制。图片点击用于选择，Enter 复制，Space 仍可打开完整预览。普通文本维持点击复制。
-- 不编造图片文件名、格式或文件大小；未备注时显示“剪贴板图片”。建筑照片由出图模型生成，仅作为测试素材，不进入生产前端包。
-- 设置与完整预览统一为钴蓝标题栏和白色内容。白色焦点轮廓用于蓝底控件，正文区保留蓝色焦点轮廓。
+## 检查与修正
 
-## 已检查表面
+1. 统一 Button 尺寸与变体、Input、Textarea、Switch、ToggleGroup、RadioGroup、Dialog、AlertDialog、DropdownMenu 和 Tooltip。Lucide 保持唯一图标库；采用 Nova 默认 Geist 字体，中文系统回退。
+2. 自写弹窗焦点逻辑由 Radix 模态管理替代；应用状态打开的弹窗补充焦点返回适配。确认框初始焦点在取消，取消或 Escape 后回到原清空按钮。
+3. 暂停菜单支持键盘打开、方向键移动、Escape 关闭并返回触发器。修复菜单 Escape 继续触发列表快捷键、清掉图片选中态的问题。
+4. 弹出内容、开关和撤销提示使用 Motion；减少动态效果偏好下不执行入场过渡。修正 Motion 与撤销提示水平居中样式冲突。
+5. 保留钴蓝顶栏、纯白主体、连续列表和图片工作区。480 × 720 下主要图片操作可见，420 × 600 主体可滚动；设置和确认框在窗口内完整显示。
 
-| 表面 | 结果与证据 |
+## 验收表面
+
+| 表面 | 证据与结果 |
 | --- | --- |
-| 主界面、图片操作 | [主界面](docs/screenshots/main.png)，无横向溢出；图片与复制动作在常用窗口内完整显示。 |
-| 设置、全文、图片预览 | [设置](docs/screenshots/settings.png)、[全文](docs/screenshots/content-preview.png)、[图片预览](docs/screenshots/image-preview.png)，内容可滚动，关闭与焦点恢复正常。 |
-| 420 × 600 小窗口 | [图片工作区](docs/screenshots/small-image.png)、[定时暂停](docs/screenshots/small-paused.png)，主体滚动，顶栏稳定，控制按钮不溢出。 |
-| 暂停与删除撤销 | [暂停菜单](docs/screenshots/pause-menu.png)、[删除撤销](docs/screenshots/delete-undo.png)，状态和操作仍清楚可见。 |
-| 图片错误状态 | 损坏图片显示说明并禁用复制与放大；重新选择恢复后的记录可正常预览和复制。 |
-| Linux 原生运行 | [Tauri 窗口客户区](docs/screenshots/native-linux.png)，真实本地图片加载正常；点击图片复制成功，后端使用次数从 0 增至 1。 |
-| 键盘、模态与反馈 | 170 条历史跨批次导航、搜索、Space、Escape、焦点约束、设置失败与重试均通过回归。 |
+| 主界面和图片工作区 | [截图](docs/screenshots/main.png)，蓝白配色、文本阅读与操作层次保持一致。 |
+| 设置与确认 | [设置](docs/screenshots/settings.png)、[确认框](docs/screenshots/clear-confirm.png)，危险操作与取消分开，背景隔离。 |
+| 菜单与提示 | [暂停菜单](docs/screenshots/pause-menu.png)，默认白色 Nova 菜单；工具提示实际显示并通过回归。 |
+| 完整预览 | [图片](docs/screenshots/image-preview.png)、[全文](docs/screenshots/content-preview.png)，滚动、复制、关闭与焦点返回通过回归。 |
+| 小窗口 | [图片操作](docs/screenshots/small-image.png)、[定时暂停](docs/screenshots/small-paused.png)，无横向溢出，控件可达。 |
+| 原生运行 | [Linux Tauri 客户区](docs/screenshots/native-linux.png)，实际二进制加载隔离 SQLite 记录与本地图片。 |
 
-## 验证边界
-
-主对照及各状态截图来自真实 React 页面与浏览器运行，使用隔离示例数据和原生命令模拟；另单独提供 Linux/Xvfb 的原生窗口截图，使用隔离 SQLite 数据。没有将它们标为 Windows/macOS 原生窗口截图。三平台构建与原生测试结果、完整命令见[封板记录](docs/freeze-report.md)。
-
-没有未解决的 P0/P1/P2 视觉问题。P3：系统字体回退、系统标题栏和缩放的细微差异仍取决于用户的桌面环境。
+没有遗留 P0/P1/P2 视觉问题。自动化验证含正常与减少动态效果模式；没有据截图宣称屏幕阅读器或全部系统缩放均已验收。Windows/macOS 原生测试结果见[验证记录](docs/freeze-report.md)。
