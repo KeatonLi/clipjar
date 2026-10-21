@@ -1,0 +1,49 @@
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #fff;
+  --foreground: #202b42;
+  --card: #fff;
+  --card-foreground: #202b42;
+  --popover: #fff;
+  --popover-foreground: #202b42;
+  --primary: #2344b6;
+  --primary-foreground: #fff;
+  --secondary: #eef2fc;
+  --secondary-foreground: #2344b6;
+  --ui-muted: #f3f5f9;
+  --muted-foreground: #6c7688;
+  --ui-accent: #eef2fc;
+  --accent-foreground: #202b42;
+  --destructive: #bd303e;
+  --border: #e2e7f0;
+  --input: #dbe1ec;
+  --ring: #2344b6;
+  --radius: 0.625rem;
+}

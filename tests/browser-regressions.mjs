@@ -119,11 +119,11 @@ try {
   while (await page.getByRole('button', { name: /加载更多/ }).count())
     await page.getByRole('button', { name: /加载更多/ }).click();
   assert.equal(await page.locator('.clipboard-row').count(), 170);
-  await page.getByRole('button', { name: /收藏\s*57/ }).click();
+  await page.getByRole('radio', { name: /收藏\s*57/ }).click();
   await page.waitForFunction(() => document.querySelectorAll('.clipboard-row').length === 50);
   await page.getByRole('button', { name: /加载更多/ }).click();
   await page.waitForFunction(() => document.querySelectorAll('.clipboard-row').length === 57);
-  await page.getByRole('button', { name: /全部\s*170/ }).click();
+  await page.getByRole('radio', { name: /全部\s*170/ }).click();
   await page.waitForFunction(() => document.querySelectorAll('.clipboard-row').length === 50);
   console.log('PASS history: all 170 records accessible; keyboard crosses batch boundaries');
   await page.getByRole('searchbox').fill('记录 169');
@@ -193,8 +193,8 @@ try {
   );
   await mac.goto(url);
   await mac.getByRole('button', { name: '打开设置' }).click();
-  await mac.getByRole('button', { name: /⌘ Shift V/ }).waitFor();
-  assert.equal(await mac.getByRole('button', { name: /Win|Ctrl Shift V/ }).count(), 0);
+  await mac.getByRole('radio', { name: /⌘ Shift V/ }).waitFor();
+  assert.equal(await mac.getByRole('radio', { name: /Win|Ctrl Shift V/ }).count(), 0);
   await mac.close();
   console.log('PASS platform-specific macOS shortcut choices');
 
@@ -274,7 +274,7 @@ try {
     await native.getByRole('switch', { name: '开机自启' }).getAttribute('aria-checked'),
     'true'
   );
-  await native.getByRole('button', { name: /Ctrl Alt V/ }).click();
+  await native.getByRole('radio', { name: /Ctrl Alt V/ }).click();
   await native.waitForFunction(
     () => window.nativeMock.shortcuts.size === 1 && window.nativeMock.shortcuts.has('Control+Alt+V')
   );
@@ -298,7 +298,7 @@ try {
 
   await native.getByRole('button', { name: '关闭设置' }).click();
   await native.getByRole('button', { name: '暂停', exact: true }).click();
-  await native.getByRole('button', { name: '直到手动恢复', exact: true }).click();
+  await native.getByRole('menuitem', { name: '直到手动恢复', exact: true }).click();
   await native.getByText('已暂停记录', { exact: true }).waitFor();
   await screenshot(native, '06-privacy-pause');
   await native.evaluate(() => {
@@ -330,6 +330,8 @@ try {
   await deleteRow.getByRole('button', { name: '删除记录' }).click();
   await native.getByRole('button', { name: /撤销/ }).waitFor();
   assert.equal(await native.getByText('after privacy pause', { exact: true }).count(), 0);
+  const undoBounds = await native.locator('.undo-toast').boundingBox();
+  assert.ok(undoBounds.x >= 0 && undoBounds.x + undoBounds.width <= 480);
   await screenshot(native, '07-delete-undo');
   await native.getByRole('button', { name: /撤销/ }).click();
   await native.getByText('after privacy pause', { exact: true }).waitFor();
@@ -390,6 +392,11 @@ try {
   await sample.getByRole('button', { name: '打开设置' }).click();
   await screenshot(sample, '04-settings');
   await sample.setViewportSize({ width: 420, height: 600 });
+  // Wait for the browser's responsive layout and Motion entry to settle.
+  await sample.waitForFunction(() => {
+    const r = document.querySelector('[role="dialog"]').getBoundingClientRect();
+    return r.width > 0 && r.x >= 0 && r.y >= 0 && r.right <= 420 && r.bottom <= 600;
+  });
   const bounds = await sample.getByRole('dialog').boundingBox();
   assert.ok(
     bounds.x >= 0 &&
@@ -472,6 +479,79 @@ try {
   );
   console.log(
     'PASS cobalt inspector: 420px controls, broken-image copy guard, selection reset and recovery'
+  );
+  const components = tracked(
+    await browser.newPage({
+      viewport: { width: 420, height: 600 },
+      locale: 'zh-CN',
+      reducedMotion: 'reduce'
+    })
+  );
+  await components.addInitScript({
+    content: `(${installCobaltPreview.toString()})();(${installNativeMock.toString()})();window.nativeMock.image=null;Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true});`
+  });
+  await components.goto(url);
+  await components.getByRole('button', { name: /查看图片/ }).click();
+  const selectedImage = components.getByRole('region', { name: '图片快速预览' });
+  const pause = components.getByRole('button', { name: '暂停', exact: true });
+  await pause.focus();
+  await pause.press('ArrowDown');
+  await components.getByRole('menu').waitFor();
+  await components.waitForFunction(() => document.activeElement?.textContent === '暂停 15 分钟');
+  await components.keyboard.press('ArrowDown');
+  await components.waitForFunction(() => document.activeElement?.textContent === '暂停 1 小时');
+  await components.keyboard.press('Escape');
+  await components.getByRole('menu').waitFor({ state: 'hidden' });
+  assert.equal(await selectedImage.count(), 1, 'menu Escape must preserve the selected image');
+  assert.equal(await pause.evaluate((e) => e === document.activeElement), true);
+  const zoom = selectedImage.getByRole('button', { name: '放大图片', exact: true });
+  await zoom.hover();
+  await components.getByRole('tooltip').filter({ hasText: '放大图片' }).waitFor();
+  await components.mouse.move(0, 0);
+  await components.getByRole('button', { name: '打开设置' }).click();
+  const preferences = components.getByRole('dialog');
+  await preferences.waitFor();
+  assert.equal(await preferences.evaluate((e) => getComputedStyle(e).opacity), '1');
+  const shortcut = components.getByRole('radio', { name: 'Ctrl Shift V', exact: true });
+  await shortcut.focus();
+  await components.keyboard.down('ArrowDown');
+  await components.waitForFunction(() => window.nativeMock.shortcuts.has('Control+Alt+V'));
+  await components.keyboard.up('ArrowDown');
+  await components.getByRole('button', { name: '清空历史', exact: true }).click();
+  await components.getByRole('alertdialog').waitFor();
+  assert.equal(
+    await components
+      .getByRole('button', { name: '取消', exact: true })
+      .evaluate((e) => e === document.activeElement),
+    true
+  );
+  await screenshot(components, '11-nova-confirm');
+  await components.keyboard.press('Escape');
+  await components.getByRole('alertdialog').waitFor({ state: 'hidden' });
+  assert.equal(await preferences.count(), 1, 'cancel leaves the preferences dialog open');
+  assert.equal(await components.evaluate(() => window.nativeMock.db.items.length), 3);
+  await components.waitForFunction(() => document.activeElement?.textContent === '清空历史');
+  assert.equal(
+    await components
+      .getByRole('button', { name: '清空历史', exact: true })
+      .evaluate((e) => e === document.activeElement),
+    true
+  );
+  await components.getByRole('button', { name: '清空历史', exact: true }).click();
+  await components.getByRole('button', { name: '确认清空历史', exact: true }).click();
+  await components.waitForFunction(
+    () => window.nativeMock.db.items.length === 1 && window.nativeMock.db.items[0].isFavorite
+  );
+  await components.getByRole('button', { name: '全部清空', exact: true }).click();
+  await components.getByRole('button', { name: '取消', exact: true }).click();
+  assert.equal(await components.evaluate(() => window.nativeMock.db.items.length), 1);
+  await components.getByRole('button', { name: '全部清空', exact: true }).click();
+  await components.getByRole('button', { name: '确认删除全部', exact: true }).click();
+  await components.waitForFunction(() => window.nativeMock.db.items.length === 0);
+  await components.getByRole('button', { name: '关闭设置' }).click();
+  await components.getByRole('heading', { name: '从一次复制开始' }).waitFor();
+  console.log(
+    'PASS Nova: menu keyboard/focus, Escape isolation, tooltip, radio keyboard, nested confirmation/cancel, favorites retention, clear-all and reduced motion'
   );
   assert.deepEqual(errors, []);
   console.log('PASS 420x600 modal bounds, focus containment, and no uncaught page errors');

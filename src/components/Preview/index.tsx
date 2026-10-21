@@ -1,7 +1,9 @@
+import { IconButton } from '@/components/ui/icon-button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { Copy, X, FileText, Code, Link, Image as ImageIcon, ZoomIn, ZoomOut } from 'lucide-react';
 import type { ClipboardItem } from '../../types';
-import { useDialog } from '../../hooks/useDialog';
 
 const types = {
   text: { title: '文本预览', Icon: FileText },
@@ -22,7 +24,6 @@ export function Preview({
   onCopy(item: ClipboardItem): Promise<void>;
   error: string;
 }) {
-  const ref = useDialog(onClose);
   const [zoomed, setZoomed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [brokenImage, setBrokenImage] = useState(false);
@@ -40,15 +41,16 @@ export function Preview({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        ref={ref}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
         className="preview-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="preview-title"
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
+        showCloseButton={false}
+        aria-describedby="preview-description"
         onKeyDown={(e) => {
           if (
             e.key === 'Enter' &&
@@ -66,17 +68,23 @@ export function Preview({
               <Icon size={18} />
             </span>
             <div>
-              <h2 id="preview-title">{title}</h2>
-              <p>
+              <DialogTitle id="preview-title">{title}</DialogTitle>
+              <DialogDescription id="preview-description">
                 {isImage
                   ? '查看已保存的图片'
                   : `${item.content.length.toLocaleString()} 个字符 · 完整内容`}
-              </p>
+              </DialogDescription>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭预览">
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="关闭预览"
+          >
             <X size={18} />
-          </button>
+          </IconButton>
         </header>
         <div
           className={`preview-content ${isImage ? 'is-image' : ''} ${zoomed ? 'is-zoomed' : ''}`}
@@ -105,27 +113,31 @@ export function Preview({
         )}
         <footer className="modal-footer">
           {isImage && item.imagePath && !brokenImage ? (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               className="secondary-button"
               aria-pressed={zoomed}
               onClick={() => setZoomed(!zoomed)}
             >
               {zoomed ? <ZoomOut size={15} /> : <ZoomIn size={15} />}
               {zoomed ? '适应窗口' : '实际大小'}
-            </button>
+            </Button>
           ) : (
             <span className="muted-hint">Esc 关闭 · Enter 复制</span>
           )}
-          <button
+          <Button
+            variant="default"
+            size="default"
             className="primary-button"
             onClick={() => void copy()}
             disabled={busy || !canCopy}
           >
             <Copy size={15} />
             {busy ? '正在复制…' : '复制内容'}
-          </button>
+          </Button>
         </footer>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

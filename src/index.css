@@ -1,10 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import './styles/shadcn-variants.css';
+@import './styles/tokens.css';
+@import './styles/nova.css';
 
 :root {
-  --font:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --surface: #fff;
   --canvas: #fff;
   --ink: #202b42;
@@ -115,33 +115,6 @@
 }
 .header-tools {
   gap: 10px;
-}
-.icon-button {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #7b838e;
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  cursor: pointer;
-  transition:
-    color 0.12s,
-    background-color 0.12s,
-    opacity 0.12s;
-}
-.icon-button:hover {
-  color: #343d49;
-  background: #edf0f4;
-}
-.header-tools > .icon-button {
-  width: 30px;
-  height: 30px;
-  color: #fff;
 }
 .search-field {
   display: flex;
@@ -286,43 +259,6 @@
 .capture-controls.is-preview .capture-button {
   display: none;
 }
-.pause-options {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 7px);
-  z-index: 30;
-  width: 202px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow:
-    0 8px 30px #3030301c,
-    0 2px 6px #30303008;
-  white-space: normal;
-}
-.pause-options button {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-  font-size: 12px;
-  cursor: pointer;
-}
-.pause-options button:hover,
-.pause-options button:focus-visible {
-  background: var(--accent-soft);
-}
-.pause-options p {
-  margin: 6px 8px;
-  font-size: 10px;
-  line-height: 1.7;
-  color: var(--muted);
-}
 
 /* Content cards reserve the full line for the copied content. */
 .clipboard-content {
@@ -366,6 +302,9 @@
   min-height: 28px;
 }
 .clip-content-button {
+  height: auto;
+  white-space: normal;
+  font-weight: 400;
   display: flex;
   align-items: flex-start;
   gap: 14px;
@@ -807,42 +746,6 @@
   font-size: 11px;
   line-height: 1.6;
 }
-.setting-toggle {
-  position: relative;
-  flex-shrink: 0;
-  width: 34px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  border-radius: 20px;
-  background: #e1e1e1;
-  cursor: pointer;
-}
-.setting-toggle span {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px #2f2f2f12;
-  transition: transform 0.15s;
-}
-.setting-toggle.is-on {
-  background: var(--accent);
-}
-.setting-toggle.is-on span {
-  transform: translateX(14px);
-}
-.setting-toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.setting-toggle[aria-busy='true'] {
-  opacity: 0.6;
-  cursor: wait;
-}
 .shortcut-options {
   display: grid;
   gap: 7px;
@@ -922,36 +825,6 @@
   color: #5b5b5b;
   font-size: 12px;
 }
-.primary-button,
-.secondary-button,
-.danger-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 9px 12px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 550;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.primary-button {
-  color: #fff;
-  background: var(--accent);
-}
-.primary-button:hover {
-  background: #183596;
-}
-.secondary-button {
-  color: #717171;
-  border-color: #e3e3e3;
-  background: #fff;
-}
-.secondary-button:hover {
-  background: #f5f5f5;
-}
 .version-tag {
   margin-left: 5px;
   color: #6f6f6f;
@@ -979,14 +852,6 @@
   color: #6f6f6f;
   font-size: 10px;
   line-height: 1.6;
-}
-.danger-button {
-  color: #a36853;
-  border-color: #e9d8cc;
-  background: #fff;
-}
-.danger-button:hover {
-  background: #f9ece2;
 }
 .history-clear {
   margin-top: 21px;
@@ -1102,7 +967,7 @@
   z-index: 45;
   bottom: 55px;
   left: 50%;
-  transform: translateX(-50%);
+  translate: -50% 0;
   display: flex;
   align-items: center;
   gap: 22px;
@@ -1321,6 +1186,9 @@
     gap: 3px;
   }
   .clip-content-button {
+    height: auto;
+    white-space: normal;
+    font-weight: 400;
     gap: 12px;
     padding-right: 82px;
   }
@@ -1415,6 +1283,7 @@
   background: #fff;
 }
 .inspector-media {
+  height: auto;
   display: block;
   width: 100%;
   padding: 0;
@@ -1465,20 +1334,8 @@
   gap: 7px;
   flex-shrink: 0;
 }
-.inspector-actions .icon-button {
-  width: 31px;
-  height: 33px;
-  color: #6e7890;
-  border: 1px solid #e2e7f0;
-  border-radius: 7px;
-}
 .inspector-actions .is-favorite {
   color: var(--accent);
-}
-.inspector-copy {
-  padding: 10px 12px;
-  font-size: 11px;
-  border-radius: 7px;
 }
 .inspector-unavailable {
   display: flex;
@@ -1537,4 +1394,64 @@
     max-width: none;
     margin: 5px 0 0 34px;
   }
+}
+
+/* Application layout around the shared Nova primitives. */
+.settings-panel,
+.preview-panel {
+  padding: 0;
+  gap: 0;
+}
+.pause-options {
+  width: 216px;
+}
+.pause-hint {
+  white-space: normal;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.filter-tabs {
+  border-radius: 0;
+}
+.filter-tab {
+  height: auto;
+  min-width: 0;
+}
+.filter-tab[data-state='on'],
+.filter-tab:hover {
+  background: transparent;
+  color: #fff;
+}
+.icon-button {
+  color: #78839a;
+}
+.icon-button.is-favorite {
+  color: var(--accent);
+}
+.header-tools > .icon-button,
+.capture-button {
+  color: white;
+}
+.inspector-actions .icon-button {
+  color: #697894;
+}
+.inspector-actions .is-favorite {
+  color: var(--accent);
+}
+.inspector-copy {
+  font-size: 13px;
+}
+.history-limit input {
+  font-size: 13px;
+}
+.shortcut-option {
+  gap: 10px;
+}
+.cn-dialog-overlay {
+  background: #1d273345;
+  backdrop-filter: blur(3px);
+}
+.cn-switch-thumb {
+  translate: none;
 }

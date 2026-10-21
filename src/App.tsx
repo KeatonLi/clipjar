@@ -1,3 +1,16 @@
+import { IconButton } from '@/components/ui/icon-button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator
+} from '@/components/ui/dropdown-menu';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useClipboardStore } from './stores/clipboardStore';
 import { type ClipboardItem, ContentType } from './types';
@@ -74,7 +87,7 @@ export default function App() {
 
   const [clock, setClock] = useState(Date.now);
   const [pauseMenu, setPauseMenu] = useState(false);
-  const pauseControls = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
   const paused = capturePaused(pauseUntil, clock);
   useEffect(() => {
     void initialize();
@@ -94,14 +107,6 @@ export default function App() {
       window.removeEventListener('focus', tick);
     };
   }, [pauseUntil, undo?.expiresAt]);
-  useEffect(() => {
-    if (!pauseMenu) return;
-    const outside = (event: PointerEvent) => {
-      if (!pauseControls.current?.contains(event.target as Node)) setPauseMenu(false);
-    };
-    document.addEventListener('pointerdown', outside);
-    return () => document.removeEventListener('pointerdown', outside);
-  }, [pauseMenu]);
 
   // Search debounce
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,6 +203,7 @@ export default function App() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (showSettings || previewItem || e.isComposing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -209,7 +215,12 @@ export default function App() {
         setPauseMenu(false);
         return;
       }
-      if (editingNoteId !== null || (e.target as HTMLElement).closest('.capture-controls')) return;
+      if (
+        pauseMenu ||
+        editingNoteId !== null ||
+        (e.target as HTMLElement).closest('.capture-controls')
+      )
+        return;
       const target = e.target as HTMLElement;
       if (target.closest('textarea, [contenteditable="true"]')) return;
       if (e.key === 'Enter' && target.closest('button')) return;
@@ -314,51 +325,57 @@ export default function App() {
             <span className="brand-name">ClipJar</span>
           </div>
           <div className="header-tools">
-            <div
-              className={`capture-controls ${!isTauri ? 'is-preview' : ''} ${paused ? 'is-paused' : ''}`}
-              ref={pauseControls}
-            >
-              <span className="capture-state">
+            <DropdownMenu open={pauseMenu && !paused} onOpenChange={setPauseMenu}>
+              <div
+                className={`capture-controls ${!isTauri ? 'is-preview' : ''} ${paused ? 'is-paused' : ''}`}
+              >
+                <span className="capture-state">
+                  {paused ? (
+                    <Pause size={13} />
+                  ) : (
+                    <Circle size={7} fill="currentColor" strokeWidth={0} />
+                  )}
+                  {isLoading
+                    ? '正在连接本地记录…'
+                    : !isTauri
+                      ? '浏览器预览'
+                      : paused
+                        ? pauseUntil === 0
+                          ? '已暂停记录'
+                          : `已暂停 · ${Math.max(1, Math.ceil(((pauseUntil ?? clock) - clock) / 60000))} 分钟后恢复`
+                        : '记录中'}
+                </span>
                 {paused ? (
-                  <Pause size={13} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    className="capture-button"
+                    onClick={resumeCapture}
+                  >
+                    <Play size={12} />
+                    恢复记录
+                  </Button>
                 ) : (
-                  <Circle size={7} fill="currentColor" strokeWidth={0} />
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      type="button"
+                      className="capture-button"
+                      disabled={!isTauri || isLoading}
+                      aria-label="暂停"
+                      title={!isTauri ? '系统采集仅桌面端可用' : '暂停期间不会读取或保存剪贴内容'}
+                    >
+                      <Pause size={12} />
+                      <span className="sr-only">暂停</span>
+                    </Button>
+                  </DropdownMenuTrigger>
                 )}
-                {isLoading
-                  ? '正在连接本地记录…'
-                  : !isTauri
-                    ? '浏览器预览'
-                    : paused
-                      ? pauseUntil === 0
-                        ? '已暂停记录'
-                        : `已暂停 · ${Math.max(1, Math.ceil(((pauseUntil ?? clock) - clock) / 60000))} 分钟后恢复`
-                      : '记录中'}
-              </span>
-              {paused ? (
-                <button type="button" className="capture-button" onClick={resumeCapture}>
-                  <Play size={12} />
-                  恢复记录
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="capture-button"
-                  disabled={!isTauri || isLoading}
-                  aria-label="暂停"
-                  aria-expanded={pauseMenu}
-                  aria-controls="pause-options"
-                  title={!isTauri ? '系统采集仅桌面端可用' : '暂停期间不会读取或保存剪贴内容'}
-                  onClick={() => setPauseMenu(!pauseMenu)}
-                >
-                  <Pause size={12} />
-                  <span className="sr-only">暂停</span>
-                </button>
-              )}
-              {pauseMenu && (
-                <div
-                  id="pause-options"
+                <DropdownMenuContent
                   className="pause-options"
-                  role="group"
+                  align="end"
+                  sideOffset={8}
                   aria-label="暂停时长"
                 >
                   {[
@@ -366,22 +383,26 @@ export default function App() {
                     { label: '暂停 1 小时', value: 60 },
                     { label: '直到手动恢复', value: null }
                   ].map((option) => (
-                    <button
-                      type="button"
+                    <DropdownMenuItem
                       key={option.label}
-                      onClick={() => {
+                      onSelect={() => {
                         setCapturePause(option.value);
                         setPauseMenu(false);
                       }}
                     >
                       {option.label}
-                    </button>
+                    </DropdownMenuItem>
                   ))}
-                  <p>恢复后仅记录新复制的内容</p>
-                </div>
-              )}
-            </div>
-            <button
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="pause-hint">
+                    恢复后仅记录新复制的内容
+                  </DropdownMenuLabel>
+                </DropdownMenuContent>
+              </div>
+            </DropdownMenu>
+            <IconButton
+              variant="ghost"
+              size="icon-sm"
               type="button"
               onClick={() => setShowSettings(true)}
               className="icon-button"
@@ -389,13 +410,13 @@ export default function App() {
               title="设置"
             >
               <Settings size={18} strokeWidth={1.7} />
-            </button>
+            </IconButton>
           </div>
         </div>
 
         <div className="search-field">
           <Search size={18} strokeWidth={1.7} aria-hidden="true" />
-          <input
+          <Input
             type="search"
             aria-label="搜索剪贴内容或备注"
             placeholder="搜索内容或备注…"
@@ -405,38 +426,46 @@ export default function App() {
           />
           {!search && <span className="search-key">{platform === 'mac' ? '⌘ K' : 'Ctrl K'}</span>}
           {search && (
-            <button
+            <IconButton
+              variant="ghost"
+              size="icon-sm"
               type="button"
               onClick={() => setSearch('')}
               className="icon-button search-clear"
               aria-label="清除搜索"
             >
               <X size={15} />
-            </button>
+            </IconButton>
           )}
         </div>
 
         <nav className="filter-row" aria-label="剪贴记录筛选">
-          <div className="filter-tabs">
-            <button
+          <ToggleGroup
+            type="single"
+            value={tab}
+            onValueChange={(value) => {
+              if (value) setTab(value as 'all' | 'fav');
+            }}
+            className="filter-tabs"
+            aria-label="记录范围"
+          >
+            <ToggleGroupItem
               type="button"
-              onClick={() => setTab('all')}
+              value="all"
               className={`filter-tab ${tab === 'all' ? 'is-active' : ''}`}
-              aria-label={`全部 ${items.length}`}
-              aria-pressed={tab === 'all'}
+              aria-label={`最近，全部 ${items.length}`}
             >
               最近
-            </button>
-            <button
+            </ToggleGroupItem>
+            <ToggleGroupItem
               type="button"
-              onClick={() => setTab('fav')}
+              value="fav"
               className={`filter-tab ${tab === 'fav' ? 'is-active' : ''}`}
               aria-label={`收藏 ${items.filter((item) => item.isFavorite).length}`}
-              aria-pressed={tab === 'fav'}
             >
               收藏
-            </button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
           <span className="filter-caption">{search ? `${matchedItems.length} 条匹配` : ''}</span>
         </nav>
       </header>
@@ -445,12 +474,18 @@ export default function App() {
         {operationError && (
           <div role="alert" className="operation-banner">
             <span>{operationError}</span>
-            <button type="button" onClick={() => void initialize()}>
+            <Button variant="ghost" size="sm" type="button" onClick={() => void initialize()}>
               重新连接
-            </button>
-            <button type="button" onClick={clearError} aria-label="关闭操作提示">
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={clearError}
+              aria-label="关闭操作提示"
+            >
               <X size={14} />
-            </button>
+            </Button>
           </div>
         )}
         {copyError && (
@@ -489,9 +524,15 @@ export default function App() {
                   : '复制文字、链接或图片，记录会出现在这里。'}
             </p>
             {search && (
-              <button type="button" className="quiet-button" onClick={() => setSearch('')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                className="quiet-button"
+                onClick={() => setSearch('')}
+              >
                 清除搜索
-              </button>
+              </Button>
             )}
           </div>
         ) : (
@@ -551,13 +592,15 @@ export default function App() {
               ))}
             </ul>
             {filteredItems.length < matchedItems.length && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 className="load-more"
                 onClick={() => setVisibleLimit((limit) => limit + APP_CONFIG.LIST_DISPLAY_LIMIT)}
               >
                 <ChevronDown size={16} />
                 加载更多<span>还有 {matchedItems.length - filteredItems.length} 条</span>
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -584,14 +627,23 @@ export default function App() {
         </div>
       </footer>
 
-      {undo && undo.expiresAt > clock && (
-        <div className="undo-toast" role="status">
-          <span>已删除一条记录</span>
-          <button type="button" onClick={undoDelete}>
-            撤销 <span>{Math.min(10, Math.ceil((undo.expiresAt - clock) / 1000))}s</span>
-          </button>
-        </div>
-      )}
+      <AnimatePresence>
+        {undo && undo.expiresAt > clock && (
+          <motion.div
+            key={undo.token}
+            className="undo-toast"
+            role="status"
+            initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <span>已删除一条记录</span>
+            <Button variant="ghost" size="sm" type="button" onClick={undoDelete}>
+              撤销 <span>{Math.min(10, Math.ceil((undo.expiresAt - clock) / 1000))}s</span>
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {previewItem && (
         <Preview
           key={previewItem.id}

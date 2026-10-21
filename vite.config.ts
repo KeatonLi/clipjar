@@ -1,19 +1,20 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+      '@': path.resolve(__dirname, './src')
+    }
   },
   // Tauri 配置
   clearScreen: false,
   server: {
     port: 1420,
-    strictPort: true,
+    strictPort: true
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
@@ -25,14 +26,15 @@ export default defineConfig({
       output: {
         // 手动分包，优化加载
         manualChunks: {
-          'vendor': ['react', 'react-dom'],
-          'tauri': ['@tauri-apps/api', '@tauri-apps/plugin-clipboard-manager'],
-        },
-      },
-    },
+          tauri: ['@tauri-apps/api', '@tauri-apps/plugin-clipboard-manager'],
+          ui: ['radix-ui'],
+          motion: ['motion/react']
+        }
+      }
+    }
   },
   // 优化依赖预加载
   optimizeDeps: {
-    include: ['react', 'react-dom', 'zustand', 'lucide-react'],
-  },
-})
+    include: ['react', 'react-dom', 'zustand', 'lucide-react']
+  }
+});

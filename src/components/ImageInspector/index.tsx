@@ -1,3 +1,5 @@
+import { IconButton } from '@/components/ui/icon-button';
+import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { Copy, Star, ZoomIn, Image as ImageIcon } from 'lucide-react';
 import type { ClipboardItem } from '../../types';
@@ -27,14 +29,16 @@ export function ImageInspector({
   return (
     <section className="image-inspector" aria-label="图片快速预览">
       {item.imagePath && !broken ? (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           className="inspector-media"
           onClick={() => onPreview(item)}
           aria-label="放大选中图片"
         >
           <img src={item.imagePath} alt="选中记录的图片" onError={() => setBroken(true)} />
-        </button>
+        </Button>
       ) : (
         <div className="inspector-unavailable" role="status">
           <ImageIcon size={28} />
@@ -52,7 +56,9 @@ export function ImageInspector({
           </p>
         </div>
         <div className="inspector-actions">
-          <button
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
             type="button"
             className="icon-button inspector-zoom"
             aria-label="放大图片"
@@ -61,8 +67,10 @@ export function ImageInspector({
             onClick={() => onPreview(item)}
           >
             <ZoomIn size={18} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
             type="button"
             className={`icon-button inspector-favorite ${item.isFavorite ? 'is-favorite' : ''}`}
             aria-label={item.isFavorite ? '取消收藏图片' : '收藏图片'}
@@ -70,8 +78,10 @@ export function ImageInspector({
             onClick={() => onToggleFavorite(item.id)}
           >
             <Star size={18} fill={item.isFavorite ? 'currentColor' : 'none'} />
-          </button>
-          <button
+          </IconButton>
+          <Button
+            variant="default"
+            size="default"
             type="button"
             className="primary-button inspector-copy"
             disabled={broken || busy || !item.imagePath}
@@ -79,7 +89,7 @@ export function ImageInspector({
           >
             <Copy size={16} />
             {busy ? '正在复制…' : '复制图片'}
-          </button>
+          </Button>
         </div>
       </div>
     </section>

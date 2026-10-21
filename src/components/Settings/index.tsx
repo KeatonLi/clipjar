@@ -1,3 +1,19 @@
+import { IconButton } from '@/components/ui/icon-button';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction
+} from '@/components/ui/alert-dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
@@ -16,7 +32,6 @@ import {
   Monitor
 } from 'lucide-react';
 import type { ShortcutMode, ShortcutStatus } from '../../hooks/useGlobalShortcut';
-import { useDialog } from '../../hooks/useDialog';
 import { APP_CONFIG } from '../../utils/constants';
 import { detectPlatform, shortcutPresets, withTimeout } from '../../utils/desktop';
 
@@ -73,27 +88,25 @@ function NativeToggle({
 }) {
   if (setting.status === 'error')
     return (
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         className="retry-button"
         onClick={() => void setting.load()}
         aria-label={`重试${label}`}
       >
         <RefreshCw size={13} />
         重试
-      </button>
+      </Button>
     );
   return (
-    <button
-      className={`setting-toggle ${setting.value ? 'is-on' : ''}`}
-      role="switch"
-      aria-checked={setting.value}
+    <Switch
       aria-label={label}
       aria-busy={setting.status === 'loading'}
       disabled={setting.status !== 'ready'}
-      onClick={() => void setting.toggle()}
-    >
-      <span />
-    </button>
+      checked={setting.value}
+      onCheckedChange={() => void setting.toggle()}
+    />
   );
 }
 
@@ -126,7 +139,6 @@ export function SettingsModal({
   settings,
   setSettings
 }: SettingsModalProps) {
-  const ref = useDialog(onClose);
   const startup = useNativeToggle(readStartup, writeStartup);
   const pinned = useNativeToggle(readPinned, writePinned);
   const platform = detectPlatform(navigator.platform);
@@ -137,13 +149,11 @@ export function SettingsModal({
   useEffect(() => {
     setHistoryDraft(String(settings.maxHistoryItems));
   }, [settings.maxHistoryItems]);
-  const clearTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      clearTimeout(clearTimer.current);
     };
   }, []);
   let storageSize = '暂不可用';
@@ -176,18 +186,6 @@ export function SettingsModal({
         setUpdate({ state: 'error', message: '暂时无法检查更新，请稍后重试。', url: '' });
     }
   };
-  const clear = (kind: 'history' | 'all') => {
-    if (confirmClear === kind) {
-      if (kind === 'all') onClearAll();
-      else onClearHistory();
-      setConfirmClear(null);
-      clearTimeout(clearTimer.current);
-    } else {
-      clearTimeout(clearTimer.current);
-      setConfirmClear(kind);
-      clearTimer.current = setTimeout(() => setConfirmClear(null), 4000);
-    }
-  };
   const stateDescription = (status: string) =>
     status === 'loading'
       ? '正在读取或应用设置…'
@@ -198,15 +196,16 @@ export function SettingsModal({
           : '';
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        ref={ref}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !confirmClear) onClose();
+      }}
+    >
+      <DialogContent
         className="settings-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        tabIndex={-1}
-        onClick={(event) => event.stopPropagation()}
+        showCloseButton={false}
+        aria-describedby="settings-description"
       >
         <header className="modal-header">
           <div className="modal-heading">
@@ -214,13 +213,21 @@ export function SettingsModal({
               <Settings size={18} />
             </span>
             <div>
-              <h2 id="settings-title">偏好设置</h2>
-              <p>通用、快捷键与本地数据</p>
+              <DialogTitle id="settings-title">偏好设置</DialogTitle>
+              <DialogDescription id="settings-description">
+                通用、快捷键与本地数据
+              </DialogDescription>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭设置">
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="关闭设置"
+          >
             <X size={18} />
-          </button>
+          </IconButton>
         </header>
         <div className="settings-content">
           <div className="storage-summary">
@@ -274,25 +281,27 @@ export function SettingsModal({
                 {platform === 'mac' ? 'macOS' : platform === 'windows' ? 'Windows' : 'Linux'}
               </span>
             </h3>
-            <div className="shortcut-options">
+            <RadioGroup
+              className="shortcut-options"
+              aria-labelledby="shortcut-settings"
+              value={shortcutMode}
+              onValueChange={(value) => onShortcutChange(value as ShortcutMode)}
+            >
               {presets.map((preset, index) => (
-                <button
+                <label
                   key={preset.value}
                   className={`shortcut-option ${shortcutMode === preset.value ? 'is-active' : ''}`}
-                  aria-pressed={shortcutMode === preset.value}
-                  onClick={() => {
-                    onShortcutChange(preset.value);
-                  }}
                 >
+                  <RadioGroupItem value={preset.value} aria-label={preset.label} />
                   <span className="shortcut-key">
                     <Keyboard size={15} />
                     {preset.label}
                   </span>
                   <span className="shortcut-recommendation">{index === 0 ? '推荐' : '备用'}</span>
                   {shortcutMode === preset.value && <Check size={15} />}
-                </button>
+                </label>
               ))}
-            </div>
+            </RadioGroup>
             {!presets.some((preset) => preset.value === shortcutMode) && (
               <p className="setting-warning">
                 当前偏好为「{shortcutMode}」。建议选择上方组合键，单独修饰键可能不受系统支持。
@@ -313,7 +322,7 @@ export function SettingsModal({
                 <p>收藏不受数量和过期清理限制</p>
               </div>
               <label className="history-limit">
-                <input
+                <Input
                   type="number"
                   aria-label="最大记录数"
                   min={10}
@@ -355,14 +364,16 @@ export function SettingsModal({
                 </strong>
                 <p>随手复制，随时找回</p>
               </div>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 className="secondary-button"
                 disabled={update.state === 'loading'}
                 onClick={() => void checkUpdate()}
               >
                 <Download size={14} />
                 {update.state === 'loading' ? '检查中…' : '检查更新'}
-              </button>
+              </Button>
             </div>
             {update.message && (
               <p
@@ -371,7 +382,9 @@ export function SettingsModal({
               >
                 {update.message}
                 {update.url && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="text-button"
                     onClick={() => {
                       if (native)
@@ -386,7 +399,7 @@ export function SettingsModal({
                     }}
                   >
                     前往下载
-                  </button>
+                  </Button>
                 )}
               </p>
             )}
@@ -396,25 +409,67 @@ export function SettingsModal({
               <strong>清空普通历史</strong>
               <p>收藏及其备注会保留</p>
             </div>
-            <button className="secondary-button" onClick={() => clear('history')}>
-              {confirmClear === 'history' ? '确认清空历史' : '清空历史'}
-            </button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="secondary-button"
+              onClick={() => setConfirmClear('history')}
+            >
+              清空历史
+            </Button>
           </div>
           <div className="danger-zone">
             <div>
               <strong>清空全部数据</strong>
               <p>包含收藏与迁移备份，无法撤销</p>
             </div>
-            <button className="danger-button" onClick={() => clear('all')}>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="danger-button"
+              onClick={() => setConfirmClear('all')}
+            >
               <Trash2 size={14} />
-              {confirmClear === 'all' ? '确认删除全部' : '全部清空'}
-            </button>
+              全部清空
+            </Button>
           </div>
         </div>
         <footer className="settings-footer">
           偏好自动保存 <span>v{APP_CONFIG.VERSION}</span>
         </footer>
-      </div>
-    </div>
+      </DialogContent>
+      <AlertDialog
+        open={confirmClear !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmClear(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmClear === 'all' ? '清空全部数据？' : '清空普通历史？'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmClear === 'all'
+                ? '所有记录、收藏、备注和迁移备份都将删除，无法撤销。'
+                : '普通历史将被删除，收藏及其备注会保留。此操作无法撤销。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (confirmClear === 'all') onClearAll();
+                else onClearHistory();
+                setConfirmClear(null);
+              }}
+            >
+              {confirmClear === 'all' ? '确认删除全部' : '确认清空历史'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Dialog>
   );
 }

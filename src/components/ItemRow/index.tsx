@@ -1,3 +1,6 @@
+import { IconButton } from '@/components/ui/icon-button';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import { memo, useEffect, useRef } from 'react';
 import {
   Star,
@@ -76,7 +79,9 @@ export const ItemRow = memo(function ItemRow({
       className={`clipboard-row ${isSelected ? 'is-selected' : ''} ${isCopied ? 'is-copied' : ''} ${canAddNote ? 'can-add-note' : ''}`}
     >
       <div className="clip-main">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           className={`clip-content-button ${hasImage ? 'has-image' : ''}`}
           onClick={() => (item.contentType === ContentType.IMAGE ? onSelect() : onCopy(item))}
@@ -125,9 +130,11 @@ export const ItemRow = memo(function ItemRow({
               </span>
             )}
           </span>
-        </button>
+        </Button>
         <div className="clip-trailing">
-          <button
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
             type="button"
             onClick={() => onToggleFavorite(item.id)}
             className={`icon-button favorite-button ${item.isFavorite ? 'is-favorite' : ''}`}
@@ -136,13 +143,15 @@ export const ItemRow = memo(function ItemRow({
             title={item.isFavorite ? '取消收藏' : '收藏'}
           >
             <Star size={17} strokeWidth={1.65} fill={item.isFavorite ? 'currentColor' : 'none'} />
-          </button>
+          </IconButton>
           <time dateTime={dateTime} title={`${dayLabel} ${timeLabel}`}>
             {timeLabel}
           </time>
         </div>
         <div className="clip-actions contextual-action">
-          <button
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
             type="button"
             onClick={() => onPreview(item)}
             onFocus={onSelect}
@@ -151,8 +160,10 @@ export const ItemRow = memo(function ItemRow({
             title="预览 · 空格"
           >
             <Eye size={16} strokeWidth={1.7} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
+            variant="ghost"
+            size="icon-sm"
             type="button"
             onClick={() => onDelete(item.id)}
             className="icon-button delete-button"
@@ -160,22 +171,24 @@ export const ItemRow = memo(function ItemRow({
             title="删除"
           >
             <Trash2 size={16} strokeWidth={1.7} />
-          </button>
+          </IconButton>
         </div>
       </div>
       {item.isFavorite && !isEditingNote && (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           className={`clip-note ${item.note ? 'has-note' : 'add-note'}`}
           onClick={() => onStartEdit(item.id, item.note)}
         >
           {item.note && <MessageSquareText size={12} aria-hidden="true" />}
           <span>{item.note || '+ 添加备注'}</span>
-        </button>
+        </Button>
       )}
       {isEditingNote && item.isFavorite && (
         <div className="note-editor">
-          <textarea
+          <Textarea
             value={noteContent}
             onChange={(e) => setNoteContent(e.target.value)}
             placeholder="为这条收藏添加备注…"
@@ -193,7 +206,9 @@ export const ItemRow = memo(function ItemRow({
           <div className="note-editor-footer">
             <span>{noteContent.length}/200</span>
             <div>
-              <button
+              <IconButton
+                variant="ghost"
+                size="icon-sm"
                 type="button"
                 className="icon-button"
                 onClick={onCancelEdit}
@@ -201,8 +216,10 @@ export const ItemRow = memo(function ItemRow({
                 title="取消"
               >
                 <X size={16} />
-              </button>
-              <button
+              </IconButton>
+              <IconButton
+                variant="ghost"
+                size="icon-sm"
                 type="button"
                 className="icon-button save-note"
                 onClick={() => onSaveNote(item.id)}
@@ -210,7 +227,7 @@ export const ItemRow = memo(function ItemRow({
                 title="保存"
               >
                 <Check size={16} />
-              </button>
+              </IconButton>
             </div>
           </div>
         </div>
